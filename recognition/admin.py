@@ -24,7 +24,7 @@ class ProductAdmin(admin.ModelAdmin):
     list_display = ['name', 'price', 'image_count', 'status_badge', 'created_at']
     list_display_links = ['name']
     search_fields = ['name', 'description']
-    list_filter = ['created_at']
+    date_hierarchy = 'created_at'
     list_per_page = 20
     ordering = ['-created_at']
     inlines = [ProductImageInline]

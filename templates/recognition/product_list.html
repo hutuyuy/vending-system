@@ -80,6 +80,21 @@
 
 {% block scripts %}
 <script>
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
 function startTraining() {
     const btn = document.getElementById('trainBtn');
     const result = document.getElementById('trainResult');
@@ -87,7 +102,10 @@ function startTraining() {
     btn.textContent = '⏳ 训练中...';
     result.innerHTML = '<p style="color:var(--accent)">🔄 正在启动训练...</p>';
 
-    fetch('/api/train/', { method: 'POST' })
+    fetch('/api/train/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCookie('csrftoken') }
+    })
         .then(r => {
             if (r.status === 403) {
                 throw new Error('请先登录后台再训练模型');

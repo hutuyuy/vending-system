@@ -85,7 +85,7 @@ function capture() {
         const formData = new FormData();
         formData.append('image', blob, 'capture.jpg');
         document.getElementById('result').innerHTML = '<p style="color:var(--accent)">🔄 识别中...</p>';
-        fetch('/api/recognize/', { method: 'POST', body: formData })
+        fetch('/api/recognize/', { method: 'POST', body: formData, headers: { 'X-CSRFToken': getCookie('csrftoken') } })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
@@ -156,11 +156,29 @@ function removeItem(index) {
     renderCart();
 }
 
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
 function doCheckout() {
     if (!cart.length) return alert('购物车为空');
     fetch('/api/checkout/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
         body: JSON.stringify({ items: cart })
     })
     .then(response => response.json())
