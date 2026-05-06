@@ -41,7 +41,7 @@ class ProductAdmin(admin.ModelAdmin):
             return format_html('<span style="color:#10b981; font-weight:600;">{0} 张 ✅</span>', count)
         elif count > 0:
             return format_html('<span style="color:#f59e0b; font-weight:600;">{0} 张 ⚠️</span>', count)
-        return format_html('<span style="color:#ef4444;">0 张 ❌</span>')
+        return format_html('<span style="color:#ef4444;">{0} 张 ❌</span>', count)
     image_count.short_description = '图片数量'
 
     def status_badge(self, obj):
@@ -49,16 +49,19 @@ class ProductAdmin(admin.ModelAdmin):
         if count >= 8:
             return format_html(
                 '<span style="background:rgba(16,185,129,0.15); color:#059669; padding:3px 10px; '
-                'border-radius:12px; font-size:12px; font-weight:600;">就绪</span>'
+                'border-radius:12px; font-size:12px; font-weight:600;">就绪</span>',
+                ''
             )
         elif count > 0:
             return format_html(
                 '<span style="background:rgba(245,158,11,0.15); color:#d97706; padding:3px 10px; '
-                'border-radius:12px; font-size:12px; font-weight:600;">图片不足</span>'
+                'border-radius:12px; font-size:12px; font-weight:600;">图片不足</span>',
+                ''
             )
         return format_html(
             '<span style="background:rgba(239,68,68,0.15); color:#dc2626; padding:3px 10px; '
-            'border-radius:12px; font-size:12px; font-weight:600;">无图片</span>'
+            'border-radius:12px; font-size:12px; font-weight:600;">无图片</span>',
+            ''
         )
     status_badge.short_description = '状态'
 
