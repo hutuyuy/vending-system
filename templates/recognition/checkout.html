@@ -43,73 +43,121 @@
 
 {% block scripts %}
 <script>
-let v,c,s,cart=[];
+let video, canvas, stream, cart = [];
 
-function startCamera(){
-    v=document.getElementById('video');c=document.getElementById('canvas');
-    navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}})
-        .then(x=>{s=x;v.srcObject=s;document.getElementById('ph').style.display='none';})
-        .catch(e=>alert('摄像头错误：'+e.message));
+function startCamera() {
+    video = document.getElementById('video');
+    canvas = document.getElementById('canvas');
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        .then(mediaStream => {
+            stream = mediaStream;
+            video.srcObject = stream;
+            document.getElementById('ph').style.display = 'none';
+        })
+        .catch(err => alert('摄像头错误：' + err.message));
 }
 
-function capture(){
-    if(!s)return alert('请先开启摄像头');
-    c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);
-    c.toBlob(b=>{
-        let fd=new FormData();fd.append('image',b,'cap.jpg');
-        document.getElementById('result').innerHTML='<p style="color:var(--accent)">🔄 识别中...</p>';
-        fetch('/api/recognize/',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{
-            if(d.success){
-                add(d.product_name,+d.price);
-                document.getElementById('result').innerHTML=
-                    '<div class="msg-success">✅ 识别成功：<strong>'+d.product_name+'</strong>（置信度：'+(d.confidence*100).toFixed(1)+'%）</div>';
-            } else {
-                let hint = d.top_guess
-                    ? '<br><span style="font-size:13px;opacity:.8">最接近的猜测：'+d.top_guess+'（'+(d.confidence*100).toFixed(1)+'%）</span>'
-                    : '';
-                document.getElementById('result').innerHTML=
-                    '<div class="msg-error">❌ '+d.message+hint+'</div>';
-            }
-        }).catch(e=>document.getElementById('result').innerHTML='<div class="msg-error">❌ '+e.message+'</div>');
-    },'image/jpeg');
+function capture() {
+    if (!stream) return alert('请先开启摄像头');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    canvas.toBlob(blob => {
+        const formData = new FormData();
+        formData.append('image', blob, 'capture.jpg');
+        document.getElementById('result').innerHTML = '<p style="color:var(--accent)">🔄 识别中...</p>';
+        fetch('/api/recognize/', { method: 'POST', body: formData })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    addToCart(data.product_name, +data.price);
+                    document.getElementById('result').innerHTML =
+                        '<div class="msg-success">✅ 识别成功：<strong>' + data.product_name +
+                        '</strong>（置信度：' + (data.confidence * 100).toFixed(1) + '%）</div>';
+                } else {
+                    const hint = data.top_guess
+                        ? '<br><span style="font-size:13px;opacity:.8">最接近的猜测：' + data.top_guess +
+                          '（' + (data.confidence * 100).toFixed(1) + '%）</span>'
+                        : '';
+                    document.getElementById('result').innerHTML =
+                        '<div class="msg-error">❌ ' + data.message + hint + '</div>';
+                }
+            })
+            .catch(err => {
+                document.getElementById('result').innerHTML =
+                    '<div class="msg-error">❌ ' + err.message + '</div>';
+            });
+    }, 'image/jpeg');
 }
 
-function add(n,p){let i=cart.find(x=>x.name===n);if(i)i.qty++;else cart.push({name:n,price:p,qty:1});render();}
+function addToCart(name, price) {
+    const existing = cart.find(item => item.name === name);
+    if (existing) existing.qty++;
+    else cart.push({ name, price, qty: 1 });
+    renderCart();
+}
 
-function render(){
-    let el=document.getElementById('cart'),ta=document.getElementById('totalArea');
-    if(!cart.length){
-        el.innerHTML='<div style="text-align:center;padding:50px 0;color:var(--text-muted)"><div style="font-size:48px">🛒</div><p>购物车为空</p></div>';
-        ta.style.display='none';return;
+function renderCart() {
+    const cartEl = document.getElementById('cart');
+    const totalArea = document.getElementById('totalArea');
+    if (!cart.length) {
+        cartEl.innerHTML = '<div style="text-align:center;padding:50px 0;color:var(--text-muted)">' +
+            '<div style="font-size:48px">🛒</div><p>购物车为空</p></div>';
+        totalArea.style.display = 'none';
+        return;
     }
-    let h='<table><thead><tr><th>商品</th><th>单价</th><th>数量</th><th>小计</th><th></th></tr></thead><tbody>';
-    let t=0;
-    cart.forEach((x,i)=>{
-        let sub=x.price*x.qty;t+=sub;
-        h+='<tr><td style="font-weight:600">'+x.name+'</td><td>¥'+x.price.toFixed(2)+'</td><td style="text-align:center"><button onclick="chg('+i+',-1)" style="background:none;border:1px solid var(--glass-border);color:var(--text);width:26px;height:26px;border-radius:6px;cursor:pointer">-</button><span style="margin:0 8px;font-weight:600">'+x.qty+'</span><button onclick="chg('+i+',1)" style="background:none;border:1px solid var(--glass-border);color:var(--text);width:26px;height:26px;border-radius:6px;cursor:pointer">+</button></td><td style="font-weight:700;color:#f472b6">¥'+sub.toFixed(2)+'</td><td><button onclick="rm('+i+')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px">✕</button></td></tr>';
+    let html = '<table><thead><tr><th>商品</th><th>单价</th><th>数量</th><th>小计</th><th></th></tr></thead><tbody>';
+    let total = 0;
+    cart.forEach((item, index) => {
+        const subtotal = item.price * item.qty;
+        total += subtotal;
+        html += '<tr><td style="font-weight:600">' + item.name + '</td>' +
+            '<td>¥' + item.price.toFixed(2) + '</td>' +
+            '<td style="text-align:center">' +
+            '<button onclick="changeQty(' + index + ',-1)" style="background:none;border:1px solid var(--glass-border);color:var(--text);width:26px;height:26px;border-radius:6px;cursor:pointer">-</button>' +
+            '<span style="margin:0 8px;font-weight:600">' + item.qty + '</span>' +
+            '<button onclick="changeQty(' + index + ',1)" style="background:none;border:1px solid var(--glass-border);color:var(--text);width:26px;height:26px;border-radius:6px;cursor:pointer">+</button></td>' +
+            '<td style="font-weight:700;color:#f472b6">¥' + subtotal.toFixed(2) + '</td>' +
+            '<td><button onclick="removeItem(' + index + ')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px">✕</button></td></tr>';
     });
-    h+='</tbody></table>';
-    el.innerHTML=h;
-    document.getElementById('totalPrice').textContent='¥'+t.toFixed(2);
-    ta.style.display='block';
+    html += '</tbody></table>';
+    cartEl.innerHTML = html;
+    document.getElementById('totalPrice').textContent = '¥' + total.toFixed(2);
+    totalArea.style.display = 'block';
 }
 
-function chg(i,d){cart[i].qty+=d;if(cart[i].qty<=0)cart.splice(i,1);render();}
-function rm(i){cart.splice(i,1);render();}
+function changeQty(index, delta) {
+    cart[index].qty += delta;
+    if (cart[index].qty <= 0) cart.splice(index, 1);
+    renderCart();
+}
 
-function doCheckout(){
-    if(!cart.length)return alert('购物车为空');
-    fetch('/api/checkout/',{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({items:cart})
-    }).then(r=>r.json()).then(d=>{
-        if(d.success){alert(d.message);cart=[];render();}
-        else alert('失败：'+d.message);
+function removeItem(index) {
+    cart.splice(index, 1);
+    renderCart();
+}
+
+function doCheckout() {
+    if (!cart.length) return alert('购物车为空');
+    fetch('/api/checkout/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: cart })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            cart = [];
+            renderCart();
+        } else {
+            alert('失败：' + data.message);
+        }
     });
 }
 
-window.addEventListener('beforeunload', ()=>{
-    if(s) s.getTracks().forEach(t=>t.stop());
+window.addEventListener('beforeunload', () => {
+    if (stream) stream.getTracks().forEach(track => track.stop());
 });
 </script>
 {% endblock %}

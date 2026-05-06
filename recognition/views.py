@@ -1,22 +1,46 @@
 import json
 import os
+import uuid
+import logging
+import threading
 
 from django.conf import settings
 from django.http import JsonResponse
 from django.shortcuts import render
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
+from django.contrib.auth.decorators import login_required
+from django.utils.decorators import method_decorator
 
 from .models import Product
 from .ml.predictor import predict_image, get_predictor
 
+logger = logging.getLogger('recognition')
+
+# 允许的图片类型和最大大小
+ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
+MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
+
+# 训练锁，防止并发训练
+_training_lock = threading.Lock()
+_training_status = {'running': False, 'progress': '', 'result': None}
+
+
+def _validate_image(file):
+    """校验上传的图片文件"""
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        return False, f'不支持的文件类型: {file.content_type}，仅支持 JPEG/PNG/WebP'
+    if file.size > MAX_IMAGE_SIZE:
+        return False, f'文件过大: {file.size / 1024 / 1024:.1f}MB，最大允许 10MB'
+    return True, ''
+
 
 def index(request):
-    products = Product.objects.all()
+    products = Product.objects.prefetch_related('images').all()
     return render(request, 'recognition/index.html', {'products': products})
 
 
 def product_list(request):
-    products = Product.objects.all()
+    products = Product.objects.prefetch_related('images').all()
     return render(request, 'recognition/product_list.html', {'products': products})
 
 
@@ -28,52 +52,151 @@ def evaluation(request):
     return render(request, 'recognition/evaluation.html')
 
 
-@csrf_exempt
+@require_POST
 def recognize_image(request):
-    if request.method == 'POST' and request.FILES.get('image'):
-        uploaded = request.FILES['image']
-        temp_dir = os.path.join(settings.MEDIA_ROOT, 'temp')
-        os.makedirs(temp_dir, exist_ok=True)
-        temp_path = os.path.join(temp_dir, 'capture.jpg')
+    """图片识别接口"""
+    if not request.FILES.get('image'):
+        return JsonResponse({'success': False, 'message': '请上传图片'}, status=400)
+
+    uploaded = request.FILES['image']
+
+    # 校验文件
+    valid, msg = _validate_image(uploaded)
+    if not valid:
+        logger.warning(f'图片校验失败: {msg}')
+        return JsonResponse({'success': False, 'message': msg}, status=400)
+
+    # 用唯一文件名保存，避免并发冲突
+    temp_dir = os.path.join(settings.MEDIA_ROOT, 'temp')
+    os.makedirs(temp_dir, exist_ok=True)
+    temp_path = os.path.join(temp_dir, f'{uuid.uuid4().hex}.jpg')
+
+    try:
         with open(temp_path, 'wb+') as f:
             for chunk in uploaded.chunks():
                 f.write(chunk)
+
+        logger.info(f'图片已保存: {temp_path} ({uploaded.size} bytes)')
         result = predict_image(temp_path)
+
         if result['success']:
             try:
                 product = Product.objects.get(name=result['product_name'])
                 result['price'] = str(product.price)
             except Product.DoesNotExist:
                 result['price'] = '0.00'
+                logger.warning(f'识别到未知商品: {result["product_name"]}')
+
         return JsonResponse(result)
-    return JsonResponse({'success': False, 'message': '请上传图片'})
+    except Exception as e:
+        logger.exception(f'识别过程出错: {e}')
+        return JsonResponse({'success': False, 'message': f'识别失败: {str(e)}'}, status=500)
+    finally:
+        # 清理临时文件
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
 
 
-@csrf_exempt
+@require_POST
 def checkout_submit(request):
-    if request.method == 'POST':
+    """结算提交接口"""
+    try:
         data = json.loads(request.body)
-        items = data.get('items', [])
-        total = sum(float(i['price']) * i['qty'] for i in items)
-        return JsonResponse({
-            'success': True,
-            'total': round(total, 2),
-            'message': f'结算成功！总计：¥{round(total, 2)}',
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'success': False, 'message': '请求数据格式错误'}, status=400)
+
+    items = data.get('items', [])
+    if not items:
+        return JsonResponse({'success': False, 'message': '购物车为空'}, status=400)
+
+    # 校验每个商品
+    total = 0
+    validated_items = []
+    for item in items:
+        name = item.get('name', '')
+        price = item.get('price', 0)
+        qty = item.get('qty', 1)
+
+        if not name or not isinstance(qty, (int, float)) or qty < 1:
+            continue
+
+        try:
+            price = float(price)
+        except (ValueError, TypeError):
+            continue
+
+        subtotal = price * int(qty)
+        total += subtotal
+        validated_items.append({
+            'name': name,
+            'price': price,
+            'qty': int(qty),
+            'subtotal': round(subtotal, 2),
         })
-    return JsonResponse({'success': False, 'message': '错误'})
+
+    if not validated_items:
+        return JsonResponse({'success': False, 'message': '没有有效的商品'}, status=400)
+
+    total = round(total, 2)
+    logger.info(f'结算完成: {len(validated_items)} 种商品, 总计 ¥{total}')
+
+    return JsonResponse({
+        'success': True,
+        'total': total,
+        'items': validated_items,
+        'message': f'结算成功！总计：¥{total}',
+    })
 
 
-@csrf_exempt
+@require_POST
 def train_model_view(request):
-    if request.method == 'POST':
-        from .ml.trainer import train_model
-        result = train_model(epochs=30, batch_size=8, learning_rate=0.001, patience=5)
-        return JsonResponse(result)
-    return JsonResponse({'success': False, 'message': '请使用 POST 请求'})
+    """训练模型接口 - 使用线程异步执行"""
+    if _training_status['running']:
+        return JsonResponse({
+            'success': False,
+            'message': '模型正在训练中，请稍后再试',
+        })
+
+    def _run_training():
+        _training_status['running'] = True
+        _training_status['progress'] = '训练中...'
+        try:
+            from .ml.trainer import train_model
+            result = train_model(epochs=30, batch_size=8, learning_rate=0.001, patience=5)
+            _training_status['result'] = result
+            _training_status['progress'] = '完成' if result.get('success') else '失败'
+            logger.info(f'训练完成: {result}')
+        except Exception as e:
+            _training_status['result'] = {'success': False, 'message': f'训练异常: {str(e)}'}
+            _training_status['progress'] = '异常'
+            logger.exception(f'训练异常: {e}')
+        finally:
+            _training_status['running'] = False
+
+    thread = threading.Thread(target=_run_training, daemon=True)
+    thread.start()
+
+    logger.info('训练任务已启动')
+    return JsonResponse({
+        'success': True,
+        'message': '训练已启动，请稍候查看结果',
+    })
 
 
-@csrf_exempt
+def training_status(request):
+    """查询训练状态"""
+    return JsonResponse({
+        'running': _training_status['running'],
+        'progress': _training_status['progress'],
+        'result': _training_status['result'],
+    })
+
+
 def training_history(request):
+    """获取训练历史"""
     from .ml.trainer import load_history
     history = load_history()
     if history:

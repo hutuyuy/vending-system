@@ -85,20 +85,49 @@ function startTraining() {
     const result = document.getElementById('trainResult');
     btn.disabled = true;
     btn.textContent = '⏳ 训练中...';
-    result.innerHTML = '<p style="color:var(--accent)">🔄 正在训练模型，请稍候（约1-3分钟）...</p>';
+    result.innerHTML = '<p style="color:var(--accent)">🔄 正在启动训练...</p>';
 
     fetch('/api/train/', { method: 'POST' })
         .then(r => r.json())
         .then(data => {
             if (data.success) {
-                result.innerHTML = `<div class="msg-success">✅ ${data.message}<br>
-                    <span style="font-size:13px;opacity:.8">样本：${data.train_samples}+${data.val_samples} | 类别：${data.num_classes} | 准确率：${data.best_accuracy}%</span></div>`;
+                result.innerHTML = '<p style="color:var(--accent)">🔄 训练已启动，正在轮询进度...</p>';
+                pollTrainingStatus(btn, result);
             } else {
                 result.innerHTML = `<div class="msg-error">❌ ${data.message}</div>`;
+                btn.disabled = false;
+                btn.textContent = '🧠 训练识别模型';
             }
         })
-        .catch(err => { result.innerHTML = `<div class="msg-error">❌ ${err.message}</div>`; })
-        .finally(() => { btn.disabled = false; btn.textContent = '🧠 训练识别模型'; });
+        .catch(err => {
+            result.innerHTML = `<div class="msg-error">❌ ${err.message}</div>`;
+            btn.disabled = false;
+            btn.textContent = '🧠 训练识别模型';
+        });
+}
+
+function pollTrainingStatus(btn, result) {
+    const interval = setInterval(() => {
+        fetch('/api/train/status/')
+            .then(r => r.json())
+            .then(data => {
+                if (!data.running && data.result) {
+                    clearInterval(interval);
+                    const res = data.result;
+                    if (res.success) {
+                        result.innerHTML = `<div class="msg-success">✅ ${res.message}<br>
+                            <span style="font-size:13px;opacity:.8">样本：${res.train_samples}+${res.val_samples} | 类别：${res.num_classes} | 准确率：${res.best_accuracy}%</span></div>`;
+                    } else {
+                        result.innerHTML = `<div class="msg-error">❌ ${res.message}</div>`;
+                    }
+                    btn.disabled = false;
+                    btn.textContent = '🧠 训练识别模型';
+                } else if (data.running) {
+                    result.innerHTML = `<p style="color:var(--accent)">🔄 ${data.progress || '训练中...'}</p>`;
+                }
+            })
+            .catch(() => {});
+    }, 3000);
 }
 </script>
 {% endblock %}

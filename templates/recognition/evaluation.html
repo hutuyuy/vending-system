@@ -1,8 +1,314 @@
 {% extends 'recognition/base.html' %}
 {% block content %}
 <div class="card fade-in" style="margin-bottom:24px;">
-    <div style="display:flex; justify-content:space-between; align-items:center;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
         <div>
             <h2 style="font-size:22px;">📊 模型评估</h2>
-            <p style="colo
-...(truncated)...
+            <p style="color:var(--text-muted); font-size:13px; margin-top:4px;">查看训练历史与模型表现</p>
+        </div>
+        <div style="display:flex; gap:10px;">
+            <button class="btn btn-primary" onclick="loadHistory()">🔄 刷新数据</button>
+            <a href="{% url 'recognition:product_list' %}" class="btn btn-ghost">🧠 去训练</a>
+        </div>
+    </div>
+</div>
+
+<div id="loading" class="card fade-in" style="text-align:center; padding:40px;">
+    <p style="color:var(--accent)">🔄 加载中...</p>
+</div>
+
+<div id="noData" class="card fade-in" style="text-align:center; padding:60px; display:none;">
+    <div style="font-size:48px; margin-bottom:12px;">📭</div>
+    <p style="color:var(--text-muted); font-size:16px;">暂无训练数据</p>
+    <p style="color:var(--text-muted); font-size:13px; margin-top:8px;">请先到商品管理页面训练模型</p>
+    <a href="{% url 'recognition:product_list' %}" class="btn btn-primary" style="margin-top:16px;">🧠 去训练</a>
+</div>
+
+<div id="dashboard" style="display:none;">
+    <!-- 概览卡片 -->
+    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:16px; margin-bottom:24px;">
+        <div class="card fade-in fade-in-d1" style="text-align:center; padding:24px;">
+            <div style="font-size:32px; margin-bottom:8px;">🎯</div>
+            <div id="bestAcc" style="font-size:28px; font-weight:700; color:var(--primary);">-</div>
+            <div style="color:var(--text-muted); font-size:12px; margin-top:4px;">最优验证准确率</div>
+        </div>
+        <div class="card fade-in fade-in-d1" style="text-align:center; padding:24px;">
+            <div style="font-size:32px; margin-bottom:8px;">📦</div>
+            <div id="numClasses" style="font-size:28px; font-weight:700; color:var(--accent);">-</div>
+            <div style="color:var(--text-muted); font-size:12px; margin-top:4px;">商品类别数</div>
+        </div>
+        <div class="card fade-in fade-in-d2" style="text-align:center; padding:24px;">
+            <div style="font-size:32px; margin-bottom:8px;">🔄</div>
+            <div id="totalEpochs" style="font-size:28px; font-weight:700; color:var(--success);">-</div>
+            <div style="color:var(--text-muted); font-size:12px; margin-top:4px;">训练轮次</div>
+        </div>
+        <div class="card fade-in fade-in-d2" style="text-align:center; padding:24px;">
+            <div style="font-size:32px; margin-bottom:8px;">⏱️</div>
+            <div id="totalTime" style="font-size:28px; font-weight:700; color:#f472b6;">-</div>
+            <div style="color:var(--text-muted); font-size:12px; margin-top:4px;">总训练时间</div>
+        </div>
+    </div>
+
+    <!-- 训练曲线 -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:24px;">
+        <div class="card fade-in fade-in-d1">
+            <h3 style="margin-bottom:16px;">📈 损失曲线</h3>
+            <canvas id="lossChart" height="200"></canvas>
+        </div>
+        <div class="card fade-in fade-in-d2">
+            <h3 style="margin-bottom:16px;">📈 准确率曲线</h3>
+            <canvas id="accChart" height="200"></canvas>
+        </div>
+    </div>
+
+    <!-- 学习率 & 耗时 -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:24px;">
+        <div class="card fade-in fade-in-d1">
+            <h3 style="margin-bottom:16px;">📉 学习率变化</h3>
+            <canvas id="lrChart" height="200"></canvas>
+        </div>
+        <div class="card fade-in fade-in-d2">
+            <h3 style="margin-bottom:16px;">⏱️ 每轮耗时</h3>
+            <canvas id="timeChart" height="200"></canvas>
+        </div>
+    </div>
+
+    <!-- 混淆矩阵 -->
+    <div class="card fade-in" style="margin-bottom:24px;">
+        <h3 style="margin-bottom:16px;">🔀 最终混淆矩阵</h3>
+        <div style="overflow-x:auto;">
+            <canvas id="confusionChart" height="300"></canvas>
+        </div>
+    </div>
+
+    <!-- 商品类别 -->
+    <div class="card fade-in">
+        <h3 style="margin-bottom:16px;">📋 商品类别</h3>
+        <div id="classList" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:12px;"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 简易图表绘制（无外部依赖）
+function drawLineChart(canvasId, labels, datasets, yLabel) {
+    var canvas = document.getElementById(canvasId);
+    var ctx = canvas.getContext('2d');
+    var W = canvas.parentElement.offsetWidth - 40;
+    var H = 200;
+    canvas.width = W; canvas.height = H;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+
+    var padding = { top: 20, right: 20, bottom: 40, left: 55 };
+    var chartW = W - padding.left - padding.right;
+    var chartH = H - padding.top - padding.bottom;
+
+    ctx.clearRect(0, 0, W, H);
+
+    // 计算范围
+    var allVals = [];
+    datasets.forEach(function(ds) { allVals = allVals.concat(ds.data); });
+    var yMin = Math.min.apply(null, allVals) * 0.9;
+    var yMax = Math.max.apply(null, allVals) * 1.1;
+    if (yMax === yMin) yMax = yMin + 1;
+
+    function xPos(i) { return padding.left + (i / (labels.length - 1)) * chartW; }
+    function yPos(v) { return padding.top + chartH - ((v - yMin) / (yMax - yMin)) * chartH; }
+
+    // 网格线
+    ctx.strokeStyle = 'rgba(99,102,241,0.08)';
+    ctx.lineWidth = 1;
+    for (var i = 0; i <= 4; i++) {
+        var y = padding.top + (i / 4) * chartH;
+        ctx.beginPath(); ctx.moveTo(padding.left, y); ctx.lineTo(W - padding.right, y); ctx.stroke();
+        ctx.fillStyle = '#94a3b8'; ctx.font = '11px Inter, sans-serif'; ctx.textAlign = 'right';
+        var val = yMax - (i / 4) * (yMax - yMin);
+        ctx.fillText(val.toFixed(2), padding.left - 8, y + 4);
+    }
+
+    // X 轴标签
+    ctx.fillStyle = '#94a3b8'; ctx.font = '11px Inter, sans-serif'; ctx.textAlign = 'center';
+    var step = Math.max(1, Math.floor(labels.length / 8));
+    for (var i = 0; i < labels.length; i += step) {
+        ctx.fillText(labels[i], xPos(i), H - 10);
+    }
+
+    // Y 轴标签
+    ctx.save(); ctx.translate(12, padding.top + chartH / 2); ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'center'; ctx.fillStyle = '#94a3b8'; ctx.font = '11px Inter, sans-serif';
+    ctx.fillText(yLabel || '', 0, 0); ctx.restore();
+
+    // 绘制线条
+    var colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444'];
+    datasets.forEach(function(ds, di) {
+        ctx.strokeStyle = colors[di % colors.length];
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ds.data.forEach(function(v, i) {
+            if (i === 0) ctx.moveTo(xPos(i), yPos(v));
+            else ctx.lineTo(xPos(i), yPos(v));
+        });
+        ctx.stroke();
+
+        // 数据点
+        ctx.fillStyle = colors[di % colors.length];
+        ds.data.forEach(function(v, i) {
+            ctx.beginPath(); ctx.arc(xPos(i), yPos(v), 3, 0, Math.PI * 2); ctx.fill();
+        });
+    });
+
+    // 图例
+    if (datasets.length > 1) {
+        var lx = W - padding.right - 10;
+        datasets.forEach(function(ds, di) {
+            var tw = ctx.measureText(ds.label).width;
+            lx -= tw + 30;
+            ctx.fillStyle = colors[di % colors.length];
+            ctx.fillRect(lx, 8, 12, 12);
+            ctx.fillStyle = '#64748b'; ctx.font = '12px Inter, sans-serif'; ctx.textAlign = 'left';
+            ctx.fillText(ds.label, lx + 16, 18);
+        });
+    }
+}
+
+function drawConfusionMatrix(canvasId, matrix, labels) {
+    var canvas = document.getElementById(canvasId);
+    var ctx = canvas.getContext('2d');
+    var n = matrix.length;
+    var cellSize = Math.min(50, Math.floor(400 / n));
+    var leftPad = 80, topPad = 80;
+    var W = leftPad + n * cellSize + 20;
+    var H = topPad + n * cellSize + 20;
+    canvas.width = W; canvas.height = H;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+
+    ctx.clearRect(0, 0, W, H);
+
+    var maxVal = 0;
+    matrix.forEach(function(row) { row.forEach(function(v) { if (v > maxVal) maxVal = v; }); });
+    if (maxVal === 0) maxVal = 1;
+
+    // 绘制单元格
+    for (var r = 0; r < n; r++) {
+        for (var c = 0; c < n; c++) {
+            var val = matrix[r][c];
+            var intensity = val / maxVal;
+            if (r === c) {
+                ctx.fillStyle = 'rgba(16,185,129,' + (0.2 + intensity * 0.6) + ')';
+            } else {
+                ctx.fillStyle = 'rgba(239,68,68,' + (intensity * 0.5) + ')';
+            }
+            ctx.fillRect(leftPad + c * cellSize, topPad + r * cellSize, cellSize - 1, cellSize - 1);
+
+            ctx.fillStyle = '#1e1b4b'; ctx.font = '12px Inter, sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText(val, leftPad + c * cellSize + cellSize / 2, topPad + r * cellSize + cellSize / 2 + 4);
+        }
+    }
+
+    // 标签
+    ctx.fillStyle = '#64748b'; ctx.font = '11px Inter, sans-serif';
+    for (var i = 0; i < n; i++) {
+        var lbl = labels[i] || ('C' + i);
+        if (lbl.length > 6) lbl = lbl.substring(0, 5) + '…';
+        ctx.textAlign = 'right';
+        ctx.fillText(lbl, leftPad - 6, topPad + i * cellSize + cellSize / 2 + 4);
+        ctx.save();
+        ctx.translate(leftPad + i * cellSize + cellSize / 2, topPad - 6);
+        ctx.rotate(-Math.PI / 4);
+        ctx.textAlign = 'left';
+        ctx.fillText(lbl, 0, 0);
+        ctx.restore();
+    }
+
+    // 轴标签
+    ctx.fillStyle = '#1e1b4b'; ctx.font = '13px Inter, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('预测类别', leftPad + (n * cellSize) / 2, H - 4);
+    ctx.save(); ctx.translate(14, topPad + (n * cellSize) / 2); ctx.rotate(-Math.PI / 2);
+    ctx.fillText('真实类别', 0, 0); ctx.restore();
+}
+
+function loadHistory() {
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('noData').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'none';
+
+    fetch('/api/history/')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            document.getElementById('loading').style.display = 'none';
+            if (!d.success || !d.history) {
+                document.getElementById('noData').style.display = 'block';
+                return;
+            }
+            var h = d.history;
+            document.getElementById('dashboard').style.display = 'block';
+
+            // 概览
+            var bestAcc = Math.max.apply(null, h.val_acc);
+            document.getElementById('bestAcc').textContent = bestAcc.toFixed(1) + '%';
+            document.getElementById('numClasses').textContent = Object.keys(h.label_names || {}).length;
+            document.getElementById('totalEpochs').textContent = h.train_loss.length;
+            var totalTime = h.epoch_time.reduce(function(a, b) { return a + b; }, 0);
+            document.getElementById('totalTime').textContent = totalTime.toFixed(1) + 's';
+
+            // 标签
+            var labels = h.train_loss.map(function(_, i) { return 'E' + (i + 1); });
+
+            // 损失曲线
+            drawLineChart('lossChart', labels, [
+                { label: '训练损失', data: h.train_loss }
+            ], 'Loss');
+
+            // 准确率曲线
+            drawLineChart('accChart', labels, [
+                { label: '训练准确率', data: h.train_acc },
+                { label: '验证准确率', data: h.val_acc }
+            ], 'Accuracy %');
+
+            // 学习率
+            if (h.lr) {
+                drawLineChart('lrChart', labels, [
+                    { label: '学习率', data: h.lr }
+                ], 'LR');
+            }
+
+            // 耗时
+            if (h.epoch_time) {
+                drawLineChart('timeChart', labels, [
+                    { label: '耗时(秒)', data: h.epoch_time }
+                ], 'Seconds');
+            }
+
+            // 混淆矩阵（取最后一轮）
+            if (h.confusion_matrix && h.confusion_matrix.length > 0) {
+                var lastCM = h.confusion_matrix[h.confusion_matrix.length - 1];
+                var cmLabels = [];
+                for (var i = 0; i < lastCM.length; i++) {
+                    cmLabels.push(h.label_names[String(i)] || ('C' + i));
+                }
+                drawConfusionMatrix('confusionChart', lastCM, cmLabels);
+            }
+
+            // 商品类别列表
+            var classList = document.getElementById('classList');
+            classList.innerHTML = '';
+            var labelNames = h.label_names || {};
+            Object.keys(labelNames).forEach(function(k) {
+                var div = document.createElement('div');
+                div.style.cssText = 'display:flex; align-items:center; gap:10px; padding:12px; background:rgba(99,102,241,0.04); border-radius:10px; border:1px solid rgba(99,102,241,0.08);';
+                div.innerHTML = '<div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;">' +
+                    (parseInt(k) + 1) + '</div><div><strong>' + labelNames[k] + '</strong><br><span style="color:var(--text-muted);font-size:12px;">类别 ' + k + '</span></div>';
+                classList.appendChild(div);
+            });
+        })
+        .catch(function(e) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('noData').style.display = 'block';
+        });
+}
+
+// 页面加载时自动获取数据
+loadHistory();
+</script>
+{% endblock %}

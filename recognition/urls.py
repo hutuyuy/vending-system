@@ -11,5 +11,6 @@ urlpatterns = [
     path('api/recognize/', views.recognize_image, name='recognize'),
     path('api/checkout/', views.checkout_submit, name='checkout_submit'),
     path('api/train/', views.train_model_view, name='train'),
+    path('api/train/status/', views.training_status, name='train_status'),
     path('api/history/', views.training_history, name='training_history'),
 ]

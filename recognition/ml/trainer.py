@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import logging
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -8,6 +9,8 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms, models
 from PIL import Image
 from django.conf import settings
+
+logger = logging.getLogger('recognition')
 
 
 class ProductDataset(Dataset):
@@ -179,10 +182,10 @@ def train_model(epochs=30, batch_size=8, learning_rate=0.001, patience=5):
         else:
             no_improve += 1
 
-        print(f'Epoch [{epoch+1}/{epochs}] Loss: {avg_loss:.4f} Train: {train_acc:.1f}% Val: {val_acc:.1f}% LR: {current_lr:.6f} Time: {epoch_time}s')
+        logger.info(f'Epoch [{epoch+1}/{epochs}] Loss: {avg_loss:.4f} Train: {train_acc:.1f}% Val: {val_acc:.1f}% LR: {current_lr:.6f} Time: {epoch_time}s')
 
         if no_improve >= patience:
-            print(f'Early stopping at epoch {epoch+1}，{patience}轮无提升')
+            logger.info(f'Early stopping at epoch {epoch+1}，{patience}轮无提升')
             break
 
     # 保存训练历史
@@ -218,7 +221,7 @@ def save_model(model, label_map, label_names, num_classes):
     }
     with open(meta_path, 'w', encoding='utf-8') as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
-    print(f'模型已保存到: {model_path}')
+    logger.info(f'模型已保存到: {model_path}')
 
 
 def save_history(history):
@@ -227,7 +230,7 @@ def save_history(history):
     history_path = os.path.join(model_dir, 'train_history.json')
     with open(history_path, 'w', encoding='utf-8') as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
-    print(f'训练历史已保存到: {history_path}')
+    logger.info(f'训练历史已保存到: {history_path}')
 
 
 def load_history():
