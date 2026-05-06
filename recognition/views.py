@@ -34,8 +34,21 @@ def _validate_image(file):
 
 
 def index(request):
+    from django.db.models import Sum, Count
     products = Product.objects.prefetch_related('images').all()
-    return render(request, 'recognition/index.html', {'products': products})
+    recent_orders = Order.objects.prefetch_related('items').all()[:5]
+    order_stats = Order.objects.aggregate(count=Count('id'), revenue=Sum('total'))
+    stats = {
+        'product_count': products.count(),
+        'image_count': sum(p.images.count() for p in products),
+        'order_count': order_stats['count'] or 0,
+        'total_revenue': float(order_stats['revenue'] or 0),
+    }
+    return render(request, 'recognition/index.html', {
+        'products': products,
+        'recent_orders': recent_orders,
+        'stats': stats,
+    })
 
 
 def product_list(request):

@@ -39,6 +39,21 @@
         <button class="btn btn-ghost" onclick="cart=[];renderCart()" style="width:100%;margin-top:10px;">🗑️ 清空购物车</button>
     </div>
 </div>
+
+<!-- 结算成功弹窗 -->
+<div class="modal-overlay" id="successModal">
+    <div class="modal" style="text-align:center; padding:40px;">
+        <div style="font-size:64px; margin-bottom:16px;">✅</div>
+        <h3 style="font-size:22px; margin-bottom:8px;">结算成功！</h3>
+        <p id="orderNoText" style="color:var(--text-muted); font-size:14px; margin-bottom:4px;"></p>
+        <p id="orderTotalText" style="font-size:28px; font-weight:700; color:#f472b6; margin:16px 0;"></p>
+        <div id="orderItemsList" style="text-align:left; margin:16px 0;"></div>
+        <div style="display:flex; gap:10px; margin-top:24px;">
+            <a href="{% url 'recognition:order_history' %}" class="btn btn-ghost" style="flex:1;">📋 查看订单</a>
+            <button class="btn btn-primary" onclick="closeSuccessModal()" style="flex:1;">继续识别</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -54,7 +69,11 @@ function startCamera() {
             video.srcObject = stream;
             document.getElementById('ph').style.display = 'none';
         })
-        .catch(err => alert('摄像头错误：' + err.message));
+        .catch(err => {
+            document.getElementById('result').innerHTML =
+                '<div class="msg-error">❌ 摄像头无法开启：' + err.message +
+                '<br><span style="font-size:13px;opacity:.8">请检查浏览器权限或使用文件上传</span></div>';
+        });
 }
 
 function capture() {
@@ -147,13 +166,27 @@ function doCheckout() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert(data.message);
+            // 显示成功弹窗
+            document.getElementById('orderNoText').textContent = '订单号：' + data.order_no;
+            document.getElementById('orderTotalText').textContent = '¥' + data.total.toFixed(2);
+            let itemsHtml = '';
+            data.items.forEach(item => {
+                itemsHtml += '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(99,102,241,0.06);font-size:14px;">' +
+                    '<span>' + item.name + ' x' + item.qty + '</span>' +
+                    '<span style="font-weight:600;color:#f472b6;">¥' + item.subtotal.toFixed(2) + '</span></div>';
+            });
+            document.getElementById('orderItemsList').innerHTML = itemsHtml;
+            document.getElementById('successModal').classList.add('show');
             cart = [];
             renderCart();
         } else {
             alert('失败：' + data.message);
         }
     });
+}
+
+function closeSuccessModal() {
+    document.getElementById('successModal').classList.remove('show');
 }
 
 window.addEventListener('beforeunload', () => {
