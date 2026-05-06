@@ -12,7 +12,7 @@ class ProductImageInline(admin.TabularInline):
     def image_preview(self, obj):
         if obj.image:
             return format_html(
-                '<img src="{}" style="max-height:80px; border-radius:6px;" />',
+                '<img src="{0}" style="max-height:80px; border-radius:6px;" />',
                 obj.image.url
             )
         return '-'
@@ -38,9 +38,9 @@ class ProductAdmin(admin.ModelAdmin):
     def image_count(self, obj):
         count = obj.images.count()
         if count >= 8:
-            return format_html('<span style="color:#10b981; font-weight:600;">{} 张 ✅</span>', count)
+            return format_html('<span style="color:#10b981; font-weight:600;">{0} 张 ✅</span>', count)
         elif count > 0:
-            return format_html('<span style="color:#f59e0b; font-weight:600;">{} 张 ⚠️</span>', count)
+            return format_html('<span style="color:#f59e0b; font-weight:600;">{0} 张 ⚠️</span>', count)
         return format_html('<span style="color:#ef4444;">0 张 ❌</span>')
     image_count.short_description = '图片数量'
 
@@ -74,7 +74,7 @@ class ProductImageAdmin(admin.ModelAdmin):
     def image_preview(self, obj):
         if obj.image:
             return format_html(
-                '<img src="{}" style="max-height:60px; border-radius:4px;" />',
+                '<img src="{0}" style="max-height:60px; border-radius:4px;" />',
                 obj.image.url
             )
         return '-'
