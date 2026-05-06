@@ -1,0 +1,115 @@
+{% extends 'recognition/base.html' %}
+{% block content %}
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+
+    <div class="card fade-in">
+        <h2 style="margin-bottom:16px;">📷 商品识别</h2>
+        <div style="background:rgba(0,0,0,0.4); border-radius:14px; overflow:hidden; position:relative; aspect-ratio:4/3; border:1px solid var(--glass-border);">
+            <video id="video" autoplay playsinline style="width:100%;height:100%;object-fit:cover;"></video>
+            <canvas id="canvas" style="display:none;"></canvas>
+            <div id="ph" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:var(--text-muted);">
+                <div style="font-size:48px;margin-bottom:8px;">📷</div>
+                <p>点击下方按钮开启摄像头</p>
+            </div>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:10px;">
+            <button class="btn btn-primary" onclick="startCamera()" style="flex:1;">开启摄像头</button>
+            <button class="btn btn-success" onclick="capture()" style="flex:1;">📸 拍照识别</button>
+        </div>
+        <div id="result" style="margin-top:14px;"></div>
+    </div>
+
+    <div class="card fade-in fade-in-d1">
+        <h2 style="margin-bottom:16px;">🧾 购物车</h2>
+        <div id="cart">
+            <div style="text-align:center;padding:50px 0;color:var(--text-muted);">
+                <div style="font-size:48px;margin-bottom:8px;">🛒</div>
+                <p>购物车为空，请先识别商品</p>
+            </div>
+        </div>
+        <div id="totalArea" style="display:none;border-top:1px solid var(--glass-border);padding-top:16px;margin-top:16px;">
+            <div style="display:flex;justify-content:space-between;font-size:20px;font-weight:700;">
+                <span>总计</span>
+                <span id="totalPrice" style="color:#f472b6;">¥0.00</span>
+            </div>
+            <button class="btn btn-success" onclick="doCheckout()" style="width:100%;margin-top:14px;padding:14px;font-size:15px;">
+                ✅ 确认结算
+            </button>
+        </div>
+        <button class="btn btn-ghost" onclick="cart=[];render()" style="width:100%;margin-top:10px;">🗑️ 清空购物车</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let v,c,s,cart=[];
+
+function startCamera(){
+    v=document.getElementById('video');c=document.getElementById('canvas');
+    navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}})
+        .then(x=>{s=x;v.srcObject=s;document.getElementById('ph').style.display='none';})
+        .catch(e=>alert('摄像头错误：'+e.message));
+}
+
+function capture(){
+    if(!s)return alert('请先开启摄像头');
+    c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);
+    c.toBlob(b=>{
+        let fd=new FormData();fd.append('image',b,'cap.jpg');
+        document.getElementById('result').innerHTML='<p style="color:var(--accent)">🔄 识别中...</p>';
+        fetch('/api/recognize/',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{
+            if(d.success){
+                add(d.product_name,+d.price);
+                document.getElementById('result').innerHTML=
+                    '<div class="msg-success">✅ 识别成功：<strong>'+d.product_name+'</strong>（置信度：'+(d.confidence*100).toFixed(1)+'%）</div>';
+            } else {
+                let hint = d.top_guess
+                    ? '<br><span style="font-size:13px;opacity:.8">最接近的猜测：'+d.top_guess+'（'+(d.confidence*100).toFixed(1)+'%）</span>'
+                    : '';
+                document.getElementById('result').innerHTML=
+                    '<div class="msg-error">❌ '+d.message+hint+'</div>';
+            }
+        }).catch(e=>document.getElementById('result').innerHTML='<div class="msg-error">❌ '+e.message+'</div>');
+    },'image/jpeg');
+}
+
+function add(n,p){let i=cart.find(x=>x.name===n);if(i)i.qty++;else cart.push({name:n,price:p,qty:1});render();}
+
+function render(){
+    let el=document.getElementById('cart'),ta=document.getElementById('totalArea');
+    if(!cart.length){
+        el.innerHTML='<div style="text-align:center;padding:50px 0;color:var(--text-muted)"><div style="font-size:48px">🛒</div><p>购物车为空</p></div>';
+        ta.style.display='none';return;
+    }
+    let h='<table><thead><tr><th>商品</th><th>单价</th><th>数量</th><th>小计</th><th></th></tr></thead><tbody>';
+    let t=0;
+    cart.forEach((x,i)=>{
+        let sub=x.price*x.qty;t+=sub;
+        h+='<tr><td style="font-weight:600">'+x.name+'</td><td>¥'+x.price.toFixed(2)+'</td><td style="text-align:center"><button onclick="chg('+i+',-1)" style="background:none;border:1px solid var(--glass-border);color:var(--text);width:26px;height:26px;border-radius:6px;cursor:pointer">-</button><span style="margin:0 8px;font-weight:600">'+x.qty+'</span><button onclick="chg('+i+',1)" style="background:none;border:1px solid var(--glass-border);color:var(--text);width:26px;height:26px;border-radius:6px;cursor:pointer">+</button></td><td style="font-weight:700;color:#f472b6">¥'+sub.toFixed(2)+'</td><td><button onclick="rm('+i+')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px">✕</button></td></tr>';
+    });
+    h+='</tbody></table>';
+    el.innerHTML=h;
+    document.getElementById('totalPrice').textContent='¥'+t.toFixed(2);
+    ta.style.display='block';
+}
+
+function chg(i,d){cart[i].qty+=d;if(cart[i].qty<=0)cart.splice(i,1);render();}
+function rm(i){cart.splice(i,1);render();}
+
+function doCheckout(){
+    if(!cart.length)return alert('购物车为空');
+    fetch('/api/checkout/',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({items:cart})
+    }).then(r=>r.json()).then(d=>{
+        if(d.success){alert(d.message);cart=[];render();}
+        else alert('失败：'+d.message);
+    });
+}
+
+window.addEventListener('beforeunload', ()=>{
+    if(s) s.getTracks().forEach(t=>t.stop());
+});
+</script>
+{% endblock %}

@@ -1,0 +1,103 @@
+{% extends 'recognition/base.html' %}
+{% block content %}
+
+<!-- Hero -->
+<div class="card fade-in" style="text-align:center; padding:60px 40px; margin-bottom:32px;">
+    <div style="font-size:64px; margin-bottom:16px;">🛒</div>
+    <h1 style="font-size:36px; font-weight:700; margin-bottom:12px;
+        background: linear-gradient(135deg, #e0e7ff, #a5b4fc, #c4b5fd);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+        智能售货系统
+    </h1>
+    <p style="color:var(--text-muted); font-size:16px; max-width:520px; margin:0 auto; line-height:1.7;">
+        基于机器学习与计算机视觉，商品放上识别区，自动识别、智能结算。
+    </p>
+    <div style="margin-top:32px; display:flex; gap:14px; justify-content:center;">
+        <a href="{% url 'recognition:checkout' %}" class="btn btn-success" style="padding:14px 36px; font-size:15px;">
+            📷 开始识别
+        </a>
+        <a href="{% url 'recognition:product_list' %}" class="btn btn-ghost" style="padding:14px 36px; font-size:15px;">
+            📦 管理商品
+        </a>
+    </div>
+</div>
+
+<!-- 功能卡片 -->
+<div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:20px; margin-bottom:32px;">
+    <div class="card fade-in fade-in-d1" style="text-align:center; padding:36px 20px;">
+        <div style="width:64px; height:64px; border-radius:16px; margin:0 auto 16px;
+            background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(139,92,246,0.3));
+            display:flex; align-items:center; justify-content:center; font-size:28px;
+            border: 1px solid rgba(255,255,255,0.1);">📦</div>
+        <h3 style="margin-bottom:8px; font-size:17px;">商品管理</h3>
+        <p style="color:var(--text-muted); font-size:13px; margin-bottom:18px; line-height:1.6;">
+            添加商品，上传八面图片建模
+        </p>
+        <a href="{% url 'recognition:product_list' %}" class="btn btn-primary" style="font-size:13px;">进入管理 →</a>
+    </div>
+    <div class="card fade-in fade-in-d2" style="text-align:center; padding:36px 20px;">
+        <div style="width:64px; height:64px; border-radius:16px; margin:0 auto 16px;
+            background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(139,92,246,0.3));
+            display:flex; align-items:center; justify-content:center; font-size:28px;
+            border: 1px solid rgba(255,255,255,0.1);">🧠</div>
+        <h3 style="margin-bottom:8px; font-size:17px;">模型训练</h3>
+        <p style="color:var(--text-muted); font-size:13px; margin-bottom:18px; line-height:1.6;">
+            基于 MobileNet 迁移学习，一键训练
+        </p>
+        <a href="{% url 'recognition:product_list' %}" class="btn btn-primary" style="font-size:13px;">去训练 →</a>
+    </div>
+    <div class="card fade-in fade-in-d3" style="text-align:center; padding:36px 20px;">
+        <div style="width:64px; height:64px; border-radius:16px; margin:0 auto 16px;
+            background: linear-gradient(135deg, rgba(16,185,129,0.3), rgba(5,150,105,0.3));
+            display:flex; align-items:center; justify-content:center; font-size:28px;
+            border: 1px solid rgba(255,255,255,0.1);">⚡</div>
+        <h3 style="margin-bottom:8px; font-size:17px;">实时结算</h3>
+        <p style="color:var(--text-muted); font-size:13px; margin-bottom:18px; line-height:1.6;">
+            摄像头拍照识别，自动计算价格
+        </p>
+        <a href="{% url 'recognition:checkout' %}" class="btn btn-success" style="font-size:13px;">去结算 →</a>
+    </div>
+</div>
+
+<!-- 商品总览 -->
+{% if products %}
+<div class="card fade-in">
+    <h2 style="margin-bottom:20px; font-size:18px;">📋 当前商品</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>商品名称</th>
+                <th>价格</th>
+                <th>图片数</th>
+                <th>状态</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in products %}
+            <tr>
+                <td style="font-weight:600;">{{ p.name }}</td>
+                <td style="color:#f472b6; font-weight:700;">¥{{ p.price }}</td>
+                <td>{{ p.images.count }} 张</td>
+                <td>
+                    {% if p.images.count >= 8 %}
+                        <span style="color:#6ee7b7;">✅ 就绪</span>
+                    {% elif p.images.count > 0 %}
+                        <span style="color:#fcd34d;">⏳ 图片不足</span>
+                    {% else %}
+                        <span style="color:#f87171;">❌ 无图片</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card fade-in" style="text-align:center; padding:60px;">
+    <div style="font-size:48px; margin-bottom:12px;">📭</div>
+    <p style="color:var(--text-muted); font-size:16px;">还没有商品，去后台添加吧</p>
+    <a href="/admin/" class="btn btn-primary" style="margin-top:16px;">打开后台管理</a>
+</div>
+{% endif %}
+
+{% endblock %}

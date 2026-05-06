@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}智能售货系统{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --accent: #8b5cf6;
+            --success: #10b981;
+            --danger: #ef4444;
+            --glass-bg: rgba(255, 255, 255, 0.65);
+            --glass-border: rgba(255, 255, 255, 0.8);
+            --text: #1e1b4b;
+            --text-muted: #64748b;
+        }
+
+        body {
+            font-family: 'Inter', 'Microsoft YaHei', sans-serif;
+            min-height: 100vh;
+            color: var(--text);
+            overflow-x: hidden;
+            background: #f0eef6;
+        }
+
+        #bg-layer {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -2;
+            background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 25%, #e0e7ff 50%, #f0f9ff 75%, #faf5ff 100%);
+            background-size: cover;
+            background-position: center;
+        }
+        #bg-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -1;
+            pointer-events: none;
+        }
+        #bg-overlay.default-overlay {
+            background: linear-gradient(180deg, rgba(245,243,255,0.2) 0%, rgba(224,231,255,0.3) 100%);
+        }
+        #bg-overlay.custom-overlay {
+            background: rgba(255, 255, 255, 0.35);
+        }
+
+        .glow-orb {
+            position: fixed; border-radius: 50%; filter: blur(120px); z-index: -1;
+            animation: float 12s ease-in-out infinite;
+            pointer-events: none;
+        }
+        .glow-orb.orb1 { width: 600px; height: 600px; background: rgba(139,92,246,0.12); top: -200px; left: -200px; }
+        .glow-orb.orb2 { width: 500px; height: 500px; background: rgba(99,102,241,0.1); bottom: -150px; right: -150px; animation-delay: -6s; }
+        .glow-orb.orb3 { width: 400px; height: 400px; background: rgba(168,85,247,0.08); top: 40%; left: 30%; animation-delay: -3s; }
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(50px, -50px) scale(1.1); }
+        }
+
+        nav {
+            position: sticky; top: 0; z-index: 100;
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0 40px; height: 64px;
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(24px);
+            border-bottom: 1px solid rgba(99, 102, 241, 0.08);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+        .logo {
+            font-size: 20px; font-weight: 700; letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .nav-links { display: flex; gap: 8px; }
+        .nav-links a {
+            color: var(--text-muted); text-decoration: none; font-size: 14px; font-weight: 500;
+            padding: 8px 16px; border-radius: 8px; transition: all 0.2s;
+        }
+        .nav-links a:hover, .nav-links a.active {
+            color: var(--primary); background: rgba(99,102,241,0.08);
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 40px 24px; }
+
+        .card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.9);
+            border-radius: 16px; padding: 28px;
+            box-shadow: 0 4px 24px rgba(99, 102, 241, 0.06), 0 1px 3px rgba(0,0,0,0.04);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 40px rgba(99, 102, 241, 0.12), 0 2px 8px rgba(0,0,0,0.06);
+        }
+
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            padding: 10px 22px; border: none; border-radius: 10px;
+            font-size: 14px; font-weight: 600; cursor: pointer;
+            transition: all 0.2s; color: #fff; font-family: inherit;
+        }
+        .btn:active { transform: scale(0.97); }
+        .btn-primary { background: linear-gradient(135deg, #6366f1, #8b5cf6); }
+        .btn-primary:hover { box-shadow: 0 6px 24px rgba(99, 102, 241, 0.4); }
+        .btn-success { background: linear-gradient(135deg, #10b981, #059669); }
+        .btn-success:hover { box-shadow: 0 6px 24px rgba(16, 185, 129, 0.4); }
+        .btn-danger { background: linear-gradient(135deg, #ef4444, #dc2626); }
+        .btn-ghost {
+            background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.15); color: var(--primary);
+        }
+        .btn-ghost:hover { background: rgba(99,102,241,0.12); }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; padding: 12px 16px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); border-bottom: 2px solid rgba(99,102,241,0.1); }
+        td { padding: 14px 16px; border-bottom: 1px solid rgba(99,102,241,0.06); }
+
+        .msg-success { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25); color: #059669; padding: 14px; border-radius: 10px; }
+        .msg-error { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.25); color: #dc2626; padding: 14px; border-radius: 10px; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .fade-in { animation: fadeIn 0.6s ease-out forwards; }
+        .fade-in-d1 { animation-delay: 0.1s; opacity: 0; }
+        .fade-in-d2 { animation-delay: 0.2s; opacity: 0; }
+        .fade-in-d3 { animation-delay: 0.3s; opacity: 0; }
+
+        #bg-setting-btn {
+            position: fixed; bottom: 24px; right: 24px; z-index: 200;
+            width: 48px; height: 48px; border-radius: 50%;
+            background: rgba(255,255,255,0.8); backdrop-filter: blur(10px);
+            border: 1px solid rgba(99,102,241,0.15);
+            color: var(--primary); font-size: 20px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.3s;
+            box-shadow: 0 4px 16px rgba(99,102,241,0.1);
+        }
+        #bg-setting-btn:hover { background: rgba(99,102,241,0.1); transform: scale(1.1); }
+
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(30,27,75,0.3); backdrop-filter: blur(8px);
+            z-index: 300; display: none; align-items: center; justify-content: center;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(24px);
+            border: 1px solid rgba(255,255,255,0.9); border-radius: 20px;
+            padding: 32px; width: 520px; max-width: 90%;
+            box-shadow: 0 24px 80px rgba(99,102,241,0.15);
+        }
+        .modal h3 { margin-bottom: 20px; font-size: 18px; color: var(--text); }
+        .modal label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px; margin-top: 14px; }
+        .modal input[type="text"], .modal input[type="file"] {
+            width: 100%; padding: 10px 14px; background: rgba(99,102,241,0.04);
+            border: 1px solid rgba(99,102,241,0.12); border-radius: 8px;
+            color: var(--text); font-size: 14px; font-family: inherit;
+        }
+        .modal input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+        .modal-actions { display: flex; gap: 10px; margin-top: 24px; }
+        .modal-actions .btn { flex: 1; }
+
+        .crop-container {
+            position: relative; width: 100%; margin-top: 12px;
+            border-radius: 10px; overflow: hidden; display: none;
+            background: #e2e8f0; cursor: crosshair;
+        }
+        .crop-container img {
+            display: block; width: 100%; height: auto; pointer-events: none;
+            user-select: none; -webkit-user-drag: none;
+        }
+        .crop-box {
+            position: absolute; border: 2px dashed var(--primary);
+            box-shadow: 0 0 0 9999px rgba(0,0,0,0.35);
+            cursor: move; z-index: 10;
+        }
+        .crop-box::after {
+            content: ''; position: absolute; inset: 0;
+            background: repeating-linear-gradient(0deg, transparent, transparent 33%, rgba(99,102,241,0.15) 33%, rgba(99,102,241,0.15) 34%),
+            repeating-linear-gradient(90deg, transparent, transparent 33%, rgba(99,102,241,0.15) 33%, rgba(99,102,241,0.15) 34%);
+        }
+        .crop-hint { text-align: center; font-size: 12px; color: var(--text-muted); margin-top: 8px; display: none; }
+    </style>
+</head>
+<body>
+    <div id="bg-layer"></div>
+    <div id="bg-overlay" class="default-overlay"></div>
+    <div class="glow-orb orb1"></div>
+    <div class="glow-orb orb2"></div>
+    <div class="glow-orb orb3"></div>
+
+    <nav>
+        <div class="logo">◈ 智能售货系统</div>
+        <div class="nav-links">
+            <a href="{% url 'recognition:index' %}" class="{% if request.resolver_match.url_name == 'index' %}active{% endif %}">首页</a>
+            <a href="{% url 'recognition:product_list' %}" class="{% if request.resolver_match.url_name == 'product_list' %}active{% endif %}">商品管理</a>
+            <a href="{% url 'recognition:checkout' %}" class="{% if request.resolver_match.url_name == 'checkout' %}active{% endif %}">结算</a>
+            <a href="{% url 'recognition:evaluation' %}" class="{% if request.resolver_match.url_name == 'evaluation' %}active{% endif %}">评估</a>
+            <a href="/admin/">后台</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+
+    <button id="bg-setting-btn" onclick="openBgModal()" title="设置背景">🎨</button>
+
+    <div class="modal-overlay" id="bgModal">
+        <div class="modal">
+            <h3>🎨 自定义背景</h3>
+            <label>背景图片 URL</label>
+            <input type="text" id="bgUrlInput" placeholder="https://example.com/image.jpg">
+            <label style="margin-top:16px">或上传本地图片（可裁剪）</label>
+            <input type="file" id="bgFileInput" accept="image/*">
+            <div class="crop-container" id="cropContainer">
+                <img id="cropImg" src="">
+                <div class="crop-box" id="cropBox"></div>
+            </div>
+            <div class="crop-hint" id="cropHint">拖动裁剪框选择区域，裁剪比例 16:9</div>
+            <div id="bgPreview" style="margin-top:12px;border-radius:10px;overflow:hidden;display:none">
+                <img id="bgPreviewImg" style="width:100%;height:120px;object-fit:cover">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" onclick="resetBg()">恢复默认</button>
+                <button class="btn btn-primary" id="applyBtn" onclick="applyBg()">应用</button>
+                <button class="btn btn-ghost" onclick="closeBgModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    {% block scripts %}{% endblock %}
+
+    <script>
+        var cropState = { active: false, imgEl: null, boxEl: null, containerEl: null, imgW: 0, imgH: 0, boxX: 0, boxY: 0, boxW: 0, boxH: 0, dragOffX: 0, dragOffY: 0, dragging: false, dataUrl: null };
+
+        function initCropper(imgSrc) {
+            var container = document.getElementById('cropContainer');
+            var img = document.getElementById('cropImg');
+            var box = document.getElementById('cropBox');
+            var hint = document.getElementById('cropHint');
+            img.src = imgSrc;
+            container.style.display = 'block';
+            hint.style.display = 'block';
+            img.onload = function() {
+                cropState.imgEl = img; cropState.boxEl = box; cropState.containerEl = container;
+                cropState.imgW = container.offsetWidth; cropState.imgH = container.offsetHeight;
+                cropState.dataUrl = imgSrc;
+                var ratio = 16 / 9, bw = cropState.imgW * 0.7, bh = bw / ratio;
+                if (bh > cropState.imgH * 0.8) { bh = cropState.imgH * 0.8; bw = bh * ratio; }
+                cropState.boxW = bw; cropState.boxH = bh;
+                cropState.boxX = (cropState.imgW - bw) / 2; cropState.boxY = (cropState.imgH - bh) / 2;
+                cropState.active = true; renderCropBox(); bindCropEvents();
+            };
+        }
+
+        function renderCropBox() {
+            var b = cropState;
+            b.boxEl.style.left = b.boxX + 'px'; b.boxEl.style.top = b.boxY + 'px';
+            b.boxEl.style.width = b.boxW + 'px'; b.boxEl.style.height = b.boxH + 'px';
+        }
+
+        function bindCropEvents() {
+            var b = cropState;
+            b.boxEl.onmousedown = function(e) {
+                e.preventDefault(); b.dragging = true;
+                var rect = b.containerEl.getBoundingClientRect();
+                b.dragOffX = e.clientX - rect.left - b.boxX; b.dragOffY = e.clientY - rect.top - b.boxY;
+            };
+            document.onmousemove = function(e) {
+                if (!b.dragging) return;
+                var rect = b.containerEl.getBoundingClientRect();
+                b.boxX = Math.max(0, Math.min(e.clientX - rect.left - b.dragOffX, b.imgW - b.boxW));
+                b.boxY = Math.max(0, Math.min(e.clientY - rect.top - b.dragOffY, b.imgH - b.boxH));
+                renderCropBox();
+            };
+            document.onmouseup = function() { b.dragging = false; };
+        }
+
+        function getCroppedDataUrl() {
+            var b = cropState;
+            if (!b.active || !b.dataUrl) return Promise.resolve(null);
+            var canvas = document.createElement('canvas'), ctx = canvas.getContext('2d'), img = new Image();
+            return new Promise(function(resolve) {
+                img.onload = function() {
+                    var sx = img.naturalWidth / b.imgW, sy = img.naturalHeight / b.imgH;
+                    canvas.width = 1920; canvas.height = 1080;
+                    ctx.drawImage(img, b.boxX * sx, b.boxY * sy, b.boxW * sx, b.boxH * sy, 0, 0, 1920, 1080);
+                    resolve(canvas.toDataURL('image/jpeg', 0.85));
+                };
+                img.src = b.dataUrl;
+            });
+        }
+
+        function destroyCropper() {
+            cropState.active = false; cropState.dragging = false;
+            document.getElementById('cropContainer').style.display = 'none';
+            document.getElementById('cropHint').style.display = 'none';
+        }
+
+        function openBgModal() {
+            document.getElementById('bgModal').classList.add('show');
+            var saved = localStorage.getItem('vending_bg_url');
+            if (saved) document.getElementById('bgUrlInput').value = saved;
+        }
+        function closeBgModal() { document.getElementById('bgModal').classList.remove('show'); destroyCropper(); }
+
+        document.getElementById('bgFileInput').addEventListener('change', function(e) {
+            var file = e.target.files[0];
+            if (file) {
+                var reader = new FileReader();
+                reader.onload = function(ev) { initCropper(ev.target.result); document.getElementById('bgPreview').style.display = 'none'; };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        function applyBg() {
+            var urlInput = document.getElementById('bgUrlInput').value.trim();
+            if (cropState.active) { getCroppedDataUrl().then(function(u) { setBg(u || urlInput); }); }
+            else if (urlInput) { setBg(urlInput); }
+        }
+
+        function setBg(url) {
+            if (!url) return;
+            document.getElementById('bg-layer').style.backgroundImage = 'url(' + url + ')';
+            document.getElementById('bg-overlay').className = 'custom-overlay';
+            localStorage.setItem('vending_bg_url', url);
+            document.getElementById('bgPreview').style.display = 'block';
+            document.getElementById('bgPreviewImg').src = url;
+            destroyCropper(); closeBgModal();
+        }
+
+        function resetBg() {
+            document.getElementById('bg-layer').style.backgroundImage = '';
+            document.getElementById('bg-overlay').className = 'default-overlay';
+            localStorage.removeItem('vending_bg_url');
+            document.getElementById('bgUrlInput').value = '';
+            document.getElementById('bgPreview').style.display = 'none';
+            destroyCropper(); closeBgModal();
+        }
+
+        (function() {
+            var saved = localStorage.getItem('vending_bg_url');
+            if (saved) {
+                document.getElementById('bg-layer').style.backgroundImage = 'url(' + saved + ')';
+                document.getElementById('bg-overlay').className = 'custom-overlay';
+            }
+        })();
+    </script>
+</body>
+</html>

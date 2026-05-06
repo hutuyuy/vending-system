@@ -1,0 +1,104 @@
+{% extends 'recognition/base.html' %}
+{% block content %}
+<div class="card fade-in" style="margin-bottom:24px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+        <div>
+            <h2 style="font-size:22px;">📦 商品管理</h2>
+            <p style="color:var(--text-muted); font-size:13px; margin-top:4px;">
+                添加商品请访问 <a href="/admin/" style="color:var(--accent);">后台管理</a>
+            </p>
+        </div>
+        <button id="trainBtn" onclick="startTraining()" class="btn btn-primary">
+            🧠 训练识别模型
+        </button>
+    </div>
+    <div id="trainResult" style="margin-top:16px;"></div>
+</div>
+
+{% if products %}
+<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:16px;">
+    {% for p in products %}
+    <div class="card fade-in" style="padding:20px;">
+        <div style="display:flex; justify-content:space-between; align-items:start;">
+            <div>
+                <h3 style="font-size:16px;">{{ p.name }}</h3>
+                <p style="color:#f472b6; font-size:22px; font-weight:700; margin:6px 0;">¥{{ p.price }}</p>
+            </div>
+            <div style="text-align:right;">
+                {% if p.images.count >= 8 %}
+                    <span style="background:rgba(16,185,129,0.2); color:#6ee7b7; padding:4px 10px; border-radius:20px; font-size:12px;">✅ {{ p.images.count }}张</span>
+                {% elif p.images.count > 0 %}
+                    <span style="background:rgba(252,211,77,0.2); color:#fcd34d; padding:4px 10px; border-radius:20px; font-size:12px;">⏳ {{ p.images.count }}张</span>
+                {% else %}
+                    <span style="background:rgba(248,113,113,0.2); color:#f87171; padding:4px 10px; border-radius:20px; font-size:12px;">❌ 无图片</span>
+                {% endif %}
+            </div>
+        </div>
+        {% if p.description %}
+        <p style="color:var(--text-muted); font-size:13px; margin-top:8px;">{{ p.description }}</p>
+        {% endif %}
+        <div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:4px;">
+            {% for img in p.images.all %}
+            <span style="background:var(--glass-bg); border:1px solid var(--glass-border); padding:2px 8px; border-radius:6px; font-size:11px; color:var(--text-muted);">
+                {{ img.get_view_angle_display }}
+            </span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card fade-in" style="text-align:center; padding:60px;">
+    <div style="font-size:48px; margin-bottom:12px;">📭</div>
+    <p style="color:var(--text-muted); font-size:16px;">暂无商品</p>
+    <a href="/admin/" class="btn btn-primary" style="margin-top:16px;">去后台添加</a>
+</div>
+{% endif %}
+
+<div class="card fade-in" style="margin-top:24px;">
+    <h3 style="margin-bottom:12px;">💡 使用步骤</h3>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px;">
+        <div style="display:flex; gap:12px; align-items:start;">
+            <div style="min-width:32px; height:32px; border-radius:8px; background:linear-gradient(135deg,#6366f1,#8b5cf6); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700;">1</div>
+            <div><strong>添加商品</strong><br><span style="color:var(--text-muted); font-size:13px;">到后台添加商品名称和价格</span></div>
+        </div>
+        <div style="display:flex; gap:12px; align-items:start;">
+            <div style="min-width:32px; height:32px; border-radius:8px; background:linear-gradient(135deg,#6366f1,#8b5cf6); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700;">2</div>
+            <div><strong>上传图片</strong><br><span style="color:var(--text-muted); font-size:13px;">每个商品上传8张不同角度的图片</span></div>
+        </div>
+        <div style="display:flex; gap:12px; align-items:start;">
+            <div style="min-width:32px; height:32px; border-radius:8px; background:linear-gradient(135deg,#6366f1,#8b5cf6); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700;">3</div>
+            <div><strong>训练模型</strong><br><span style="color:var(--text-muted); font-size:13px;">点击上方按钮一键训练</span></div>
+        </div>
+        <div style="display:flex; gap:12px; align-items:start;">
+            <div style="min-width:32px; height:32px; border-radius:8px; background:linear-gradient(135deg,#10b981,#059669); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700;">4</div>
+            <div><strong>开始识别</strong><br><span style="color:var(--text-muted); font-size:13px;">到结算页面测试识别效果</span></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function startTraining() {
+    const btn = document.getElementById('trainBtn');
+    const result = document.getElementById('trainResult');
+    btn.disabled = true;
+    btn.textContent = '⏳ 训练中...';
+    result.innerHTML = '<p style="color:var(--accent)">🔄 正在训练模型，请稍候（约1-3分钟）...</p>';
+
+    fetch('/api/train/', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                result.innerHTML = `<div class="msg-success">✅ ${data.message}<br>
+                    <span style="font-size:13px;opacity:.8">样本：${data.train_samples}+${data.val_samples} | 类别：${data.num_classes} | 准确率：${data.best_accuracy}%</span></div>`;
+            } else {
+                result.innerHTML = `<div class="msg-error">❌ ${data.message}</div>`;
+            }
+        })
+        .catch(err => { result.innerHTML = `<div class="msg-error">❌ ${err.message}</div>`; })
+        .finally(() => { btn.disabled = false; btn.textContent = '🧠 训练识别模型'; });
+}
+</script>
+{% endblock %}
