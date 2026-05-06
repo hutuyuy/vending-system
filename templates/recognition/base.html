@@ -183,6 +183,15 @@
             repeating-linear-gradient(90deg, transparent, transparent 33%, rgba(99,102,241,0.15) 33%, rgba(99,102,241,0.15) 34%);
         }
         .crop-hint { text-align: center; font-size: 12px; color: var(--text-muted); margin-top: 8px; display: none; }
+
+        .checkout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        @media (max-width: 768px) {
+            .checkout-grid { grid-template-columns: 1fr; }
+            nav { padding: 0 16px; }
+            .nav-links { gap: 2px; }
+            .nav-links a { padding: 6px 10px; font-size: 13px; }
+            .container { padding: 20px 12px; }
+        }
     </style>
 </head>
 <body>
@@ -198,6 +207,7 @@
             <a href="{% url 'recognition:index' %}" class="{% if request.resolver_match.url_name == 'index' %}active{% endif %}">首页</a>
             <a href="{% url 'recognition:product_list' %}" class="{% if request.resolver_match.url_name == 'product_list' %}active{% endif %}">商品管理</a>
             <a href="{% url 'recognition:checkout' %}" class="{% if request.resolver_match.url_name == 'checkout' %}active{% endif %}">结算</a>
+            <a href="{% url 'recognition:order_history' %}" class="{% if request.resolver_match.url_name == 'order_history' %}active{% endif %}">订单</a>
             <a href="{% url 'recognition:evaluation' %}" class="{% if request.resolver_match.url_name == 'evaluation' %}active{% endif %}">评估</a>
             <a href="/admin/">后台</a>
         </div>

@@ -1,6 +1,6 @@
 {% extends 'recognition/base.html' %}
 {% block content %}
-<div style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+<div class="checkout-grid">
 
     <div class="card fade-in">
         <h2 style="margin-bottom:16px;">📷 商品识别</h2>
@@ -36,7 +36,7 @@
                 ✅ 确认结算
             </button>
         </div>
-        <button class="btn btn-ghost" onclick="cart=[];render()" style="width:100%;margin-top:10px;">🗑️ 清空购物车</button>
+        <button class="btn btn-ghost" onclick="cart=[];renderCart()" style="width:100%;margin-top:10px;">🗑️ 清空购物车</button>
     </div>
 </div>
 {% endblock %}

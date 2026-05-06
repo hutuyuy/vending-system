@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import Product, ProductImage
+from .models import Product, ProductImage, Order, OrderItem
 
 
 class ProductImageInline(admin.TabularInline):
@@ -97,3 +97,29 @@ class ProductImageAdmin(admin.ModelAdmin):
 admin.site.site_header = '🛒 智能售货系统 - 管理后台'
 admin.site.site_title = '智能售货系统'
 admin.site.index_title = '系统管理'
+
+
+class OrderItemInline(admin.TabularInline):
+    model = OrderItem
+    extra = 0
+    readonly_fields = ['product_name', 'price', 'quantity', 'subtotal']
+
+
+@admin.register(Order)
+class OrderAdmin(admin.ModelAdmin):
+    list_display = ['order_no', 'total', 'item_count', 'created_at']
+    list_display_links = ['order_no']
+    search_fields = ['order_no']
+    list_filter = ['created_at']
+    list_per_page = 20
+    ordering = ['-created_at']
+    readonly_fields = ['order_no', 'total', 'item_count', 'created_at']
+    inlines = [OrderItemInline]
+
+
+@admin.register(OrderItem)
+class OrderItemAdmin(admin.ModelAdmin):
+    list_display = ['order', 'product_name', 'price', 'quantity', 'subtotal']
+    list_filter = ['order']
+    search_fields = ['product_name', 'order__order_no']
+    list_per_page = 30

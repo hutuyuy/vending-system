@@ -3,13 +3,14 @@ import os
 import uuid
 import logging
 import threading
+import time
 
 from django.conf import settings
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_POST
 
-from .models import Product
+from .models import Product, Order, OrderItem
 from .ml.predictor import predict_image, get_predictor
 
 logger = logging.getLogger('recognition')
@@ -20,7 +21,7 @@ MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
 
 # 训练锁，防止并发训练
 _training_lock = threading.Lock()
-_training_status = {'running': False, 'progress': '', 'result': None}
+_training_status = {'running': False, 'progress': '', 'result': None, 'started_at': 0}
 
 
 def _validate_image(file):
@@ -48,6 +49,11 @@ def checkout(request):
 
 def evaluation(request):
     return render(request, 'recognition/evaluation.html')
+
+
+def order_history(request):
+    orders = Order.objects.prefetch_related('items').all()[:50]
+    return render(request, 'recognition/order_history.html', {'orders': orders})
 
 
 @require_POST
@@ -139,13 +145,32 @@ def checkout_submit(request):
         return JsonResponse({'success': False, 'message': '没有有效的商品'}, status=400)
 
     total = round(total, 2)
-    logger.info(f'结算完成: {len(validated_items)} 种商品, 总计 ¥{total}')
+
+    # 保存订单到数据库
+    import datetime
+    order_no = datetime.datetime.now().strftime('%Y%m%d%H%M%S') + uuid.uuid4().hex[:6].upper()
+    order = Order.objects.create(
+        order_no=order_no,
+        total=total,
+        item_count=len(validated_items),
+    )
+    for item in validated_items:
+        OrderItem.objects.create(
+            order=order,
+            product_name=item['name'],
+            price=item['price'],
+            quantity=item['qty'],
+            subtotal=item['subtotal'],
+        )
+
+    logger.info(f'结算完成: 订单{order_no}, {len(validated_items)} 种商品, 总计 ¥{total}')
 
     return JsonResponse({
         'success': True,
         'total': total,
         'items': validated_items,
-        'message': f'结算成功！总计：¥{total}',
+        'order_no': order_no,
+        'message': f'结算成功！订单号：{order_no}，总计：¥{total}',
     })
 
 
@@ -164,6 +189,7 @@ def train_model_view(request):
     def _run_training():
         _training_status['running'] = True
         _training_status['progress'] = '训练中...'
+        _training_status['started_at'] = time.time()
         try:
             from .ml.trainer import train_model
             result = train_model(epochs=30, batch_size=8, learning_rate=0.001, patience=5)
@@ -191,6 +217,13 @@ def training_status(request):
     """查询训练状态"""
     if not request.user.is_authenticated:
         return JsonResponse({'success': False, 'message': '请先登录'}, status=403)
+
+    # 超时保护：训练超过30分钟视为异常
+    if _training_status['running'] and time.time() - _training_status.get('started_at', 0) > 1800:
+        _training_status['running'] = False
+        _training_status['progress'] = '超时'
+        _training_status['result'] = {'success': False, 'message': '训练超时（超过30分钟），请重试'}
+
     return JsonResponse({
         'running': _training_status['running'],
         'progress': _training_status['progress'],

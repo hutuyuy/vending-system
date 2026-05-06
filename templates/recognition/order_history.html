@@ -1,0 +1,55 @@
+{% extends 'recognition/base.html' %}
+{% block content %}
+<div class="card fade-in" style="margin-bottom:24px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+        <div>
+            <h2 style="font-size:22px;">📋 订单记录</h2>
+            <p style="color:var(--text-muted); font-size:13px; margin-top:4px;">查看所有结算订单</p>
+        </div>
+        <a href="{% url 'recognition:checkout' %}" class="btn btn-primary">📷 去结算</a>
+    </div>
+</div>
+
+{% if orders %}
+<div style="display:grid; gap:16px;">
+    {% for order in orders %}
+    <div class="card fade-in" style="padding:20px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+            <div>
+                <span style="font-weight:700; font-size:15px;">📦 {{ order.order_no }}</span>
+                <span style="color:var(--text-muted); font-size:13px; margin-left:12px;">{{ order.created_at|date:"Y-m-d H:i:s" }}</span>
+            </div>
+            <span style="font-size:22px; font-weight:700; color:#f472b6;">¥{{ order.total }}</span>
+        </div>
+        <table style="margin-top:8px;">
+            <thead>
+                <tr>
+                    <th>商品</th>
+                    <th>单价</th>
+                    <th>数量</th>
+                    <th>小计</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in order.items.all %}
+                <tr>
+                    <td style="font-weight:600;">{{ item.product_name }}</td>
+                    <td>¥{{ item.price }}</td>
+                    <td style="text-align:center;">{{ item.quantity }}</td>
+                    <td style="font-weight:700; color:#f472b6;">¥{{ item.subtotal }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card fade-in" style="text-align:center; padding:60px;">
+    <div style="font-size:48px; margin-bottom:12px;">📭</div>
+    <p style="color:var(--text-muted); font-size:16px;">暂无订单</p>
+    <p style="color:var(--text-muted); font-size:13px; margin-top:8px;">去结算页面识别商品并下单</p>
+    <a href="{% url 'recognition:checkout' %}" class="btn btn-primary" style="margin-top:16px;">📷 去结算</a>
+</div>
+{% endif %}
+{% endblock %}
