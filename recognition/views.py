@@ -8,8 +8,6 @@ from django.conf import settings
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_POST
-from django.contrib.auth.decorators import login_required
-from django.utils.decorators import method_decorator
 
 from .models import Product
 from .ml.predictor import predict_image, get_predictor
@@ -153,7 +151,10 @@ def checkout_submit(request):
 
 @require_POST
 def train_model_view(request):
-    """训练模型接口 - 使用线程异步执行"""
+    """训练模型接口 - 使用线程异步执行（需要登录）"""
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'message': '请先登录后再操作'}, status=403)
+
     if _training_status['running']:
         return JsonResponse({
             'success': False,
@@ -188,6 +189,8 @@ def train_model_view(request):
 
 def training_status(request):
     """查询训练状态"""
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'message': '请先登录'}, status=403)
     return JsonResponse({
         'running': _training_status['running'],
         'progress': _training_status['progress'],
@@ -197,6 +200,8 @@ def training_status(request):
 
 def training_history(request):
     """获取训练历史"""
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'message': '请先登录'}, status=403)
     from .ml.trainer import load_history
     history = load_history()
     if history:

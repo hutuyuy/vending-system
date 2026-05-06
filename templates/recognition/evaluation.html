@@ -234,7 +234,15 @@ function loadHistory() {
     document.getElementById('dashboard').style.display = 'none';
 
     fetch('/api/history/')
-        .then(function(r) { return r.json(); })
+        .then(function(r) {
+            if (r.status === 403) {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('noData').style.display = 'block';
+                document.getElementById('noData').querySelector('p').textContent = '请先登录后台查看评估数据';
+                throw new Error('需要登录');
+            }
+            return r.json();
+        })
         .then(function(d) {
             document.getElementById('loading').style.display = 'none';
             if (!d.success || !d.history) {
@@ -303,8 +311,10 @@ function loadHistory() {
             });
         })
         .catch(function(e) {
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('noData').style.display = 'block';
+            if (e.message !== '需要登录') {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('noData').style.display = 'block';
+            }
         });
 }
 

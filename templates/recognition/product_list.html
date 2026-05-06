@@ -88,7 +88,12 @@ function startTraining() {
     result.innerHTML = '<p style="color:var(--accent)">🔄 正在启动训练...</p>';
 
     fetch('/api/train/', { method: 'POST' })
-        .then(r => r.json())
+        .then(r => {
+            if (r.status === 403) {
+                throw new Error('请先登录后台再训练模型');
+            }
+            return r.json();
+        })
         .then(data => {
             if (data.success) {
                 result.innerHTML = '<p style="color:var(--accent)">🔄 训练已启动，正在轮询进度...</p>';
@@ -109,7 +114,10 @@ function startTraining() {
 function pollTrainingStatus(btn, result) {
     const interval = setInterval(() => {
         fetch('/api/train/status/')
-            .then(r => r.json())
+            .then(r => {
+                if (r.status === 403) throw new Error('登录已过期，请刷新页面重新登录');
+                return r.json();
+            })
             .then(data => {
                 if (!data.running && data.result) {
                     clearInterval(interval);
@@ -126,7 +134,12 @@ function pollTrainingStatus(btn, result) {
                     result.innerHTML = `<p style="color:var(--accent)">🔄 ${data.progress || '训练中...'}</p>`;
                 }
             })
-            .catch(() => {});
+            .catch(err => {
+                clearInterval(interval);
+                result.innerHTML = `<div class="msg-error">❌ ${err.message}</div>`;
+                btn.disabled = false;
+                btn.textContent = '🧠 训练识别模型';
+            });
     }, 3000);
 }
 </script>

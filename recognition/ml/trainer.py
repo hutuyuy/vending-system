@@ -77,11 +77,23 @@ def train_model(epochs=30, batch_size=8, learning_rate=0.001, patience=5):
         return {'success': False, 'message': f'至少需要2种商品才能训练（当前只有{len(label_names)}种）。'}
 
     train_transform, val_transform = get_transforms()
-    dataset = ProductDataset(image_paths, labels, train_transform)
 
-    train_size = int(0.8 * len(dataset))
-    val_size = len(dataset) - train_size
-    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
+    # 分别创建训练集和验证集，验证集使用 val_transform（无数据增强）
+    full_indices = list(range(len(image_paths)))
+    train_size = int(0.8 * len(full_indices))
+    val_size = len(full_indices) - train_size
+    train_indices, val_indices = torch.utils.data.random_split(full_indices, [train_size, val_size])
+
+    train_dataset = ProductDataset(
+        [image_paths[i] for i in train_indices],
+        [labels[i] for i in train_indices],
+        train_transform,
+    )
+    val_dataset = ProductDataset(
+        [image_paths[i] for i in val_indices],
+        [labels[i] for i in val_indices],
+        val_transform,
+    )
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
