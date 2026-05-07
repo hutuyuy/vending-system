@@ -214,10 +214,6 @@
             <a href="{% url 'recognition:evaluation' %}" class="{% if request.resolver_match.url_name == 'evaluation' %}active{% endif %}">评估</a>
             <a href="/admin/">后台</a>
             {% if user.is_authenticated %}
-            <span style="color:var(--text-muted); font-size:13px; padding:8px 8px;">👤 {{ user.username }}</span>
-            <a href="{% url 'recognition:logout' %}" style="color:#ef4444;">登出</a>
-            {% endif %}
-            {% if user.is_authenticated %}
             <span style="margin-left:12px;font-size:13px;color:var(--text-muted);display:inline-flex;align-items:center;gap:6px;">
                 <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:12px;font-weight:600;">{{ user.username|first|upper }}</span>
                 <span>{{ user.username }}</span>
