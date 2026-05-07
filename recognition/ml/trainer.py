@@ -2,11 +2,17 @@ import os
 import json
 import time
 import logging
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset
-from torchvision import transforms, models
+
+try:
+    import torch
+    import torch.nn as nn
+    import torch.optim as optim
+    from torch.utils.data import DataLoader, Dataset
+    from torchvision import transforms, models
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
+
 from PIL import Image
 from django.conf import settings
 

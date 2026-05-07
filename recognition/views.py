@@ -6,14 +6,40 @@ import threading
 import time
 
 from django.conf import settings
+from django.contrib.auth import authenticate, login, logout
 from django.http import JsonResponse
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.views.decorators.http import require_POST
 
-from .models import Product, Order, OrderItem
-from .ml.predictor import predict_image, get_predictor
+from .models import Product, Order, OrderItem, RestockRecord
 
 logger = logging.getLogger('recognition')
+
+
+def login_view(request):
+    """登录页面"""
+    if request.user.is_authenticated:
+        return redirect('recognition:index')
+
+    error = None
+    if request.method == 'POST':
+        username = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '')
+        user = authenticate(request, username=username, password=password)
+        if user is not None:
+            login(request, user)
+            return redirect('recognition:index')
+        else:
+            error = '用户名或密码错误，请重试'
+
+    return render(request, 'recognition/login.html', {'error': error})
+
+
+def logout_view(request):
+    """登出"""
+    logout(request)
+    return redirect('recognition:login')
+
 
 # 允许的图片类型和最大大小
 ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
@@ -94,6 +120,7 @@ def recognize_image(request):
                 f.write(chunk)
 
         logger.info(f'图片已保存: {temp_path} ({uploaded.size} bytes)')
+        from .ml.predictor import predict_image
         result = predict_image(temp_path)
 
         if result['success']:
@@ -157,7 +184,33 @@ def checkout_submit(request):
     if not validated_items:
         return JsonResponse({'success': False, 'message': '没有有效的商品'}, status=400)
 
+    # 检查库存
+    for item in validated_items:
+        try:
+            product = Product.objects.get(name=item['name'])
+            if product.stock < item['qty']:
+                return JsonResponse({
+                    'success': False,
+                    'message': f'商品「{item["name"]}」库存不足，当前库存: {product.stock}',
+                }, status=400)
+            if product.stock == 0:
+                return JsonResponse({
+                    'success': False,
+                    'message': f'商品「{item["name"]}」已缺货',
+                }, status=400)
+        except Product.DoesNotExist:
+            pass
+
     total = round(total, 2)
+
+    # 扣减库存
+    for item in validated_items:
+        try:
+            product = Product.objects.get(name=item['name'])
+            product.stock = max(0, product.stock - item['qty'])
+            product.save()
+        except Product.DoesNotExist:
+            pass
 
     # 保存订单到数据库
     import datetime
@@ -253,3 +306,54 @@ def training_history(request):
     if history:
         return JsonResponse({'success': True, 'history': history})
     return JsonResponse({'success': False, 'message': '暂无训练历史，请先训练模型'})
+
+
+def restock_page(request):
+    """补货管理页面"""
+    products = Product.objects.prefetch_related('images').all()
+    return render(request, 'recognition/restock.html', {'products': products})
+
+
+@require_POST
+def restock_api(request):
+    """补货 API"""
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'success': False, 'message': '请求数据格式错误'}, status=400)
+
+    product_id = data.get('product_id')
+    quantity = data.get('quantity')
+
+    if not product_id or not quantity:
+        return JsonResponse({'success': False, 'message': '缺少参数'}, status=400)
+
+    try:
+        quantity = int(quantity)
+        if quantity <= 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        return JsonResponse({'success': False, 'message': '补货数量必须为正整数'}, status=400)
+
+    try:
+        product = Product.objects.get(pk=product_id)
+    except Product.DoesNotExist:
+        return JsonResponse({'success': False, 'message': '商品不存在'}, status=404)
+
+    product.stock += quantity
+    product.save()
+
+    note = data.get('note', '')
+    operator = data.get('operator', '')
+    RestockRecord.objects.create(
+        product=product, quantity=quantity,
+        note=note, operator=operator,
+    )
+
+    logger.info(f'补货: {product.name} +{quantity}')
+
+    return JsonResponse({
+        'success': True,
+        'message': f'{product.name} 补货 {quantity} 件成功',
+        'new_stock': product.stock,
+    })

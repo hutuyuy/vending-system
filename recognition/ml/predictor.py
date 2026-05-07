@@ -1,8 +1,14 @@
 import os
 import json
-import torch
-import torch.nn as nn
-from torchvision import transforms, models
+
+try:
+    import torch
+    import torch.nn as nn
+    from torchvision import transforms, models
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
+
 from PIL import Image
 from django.conf import settings
 
@@ -11,6 +17,9 @@ MIN_CONFIDENCE = 0.6
 
 class ProductPredictor:
     def __init__(self):
+        if not HAS_TORCH:
+            self.loaded = False
+            return
         self.model = None
         self.label_names = {}
         self.label_map = {}

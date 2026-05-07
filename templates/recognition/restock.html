@@ -1,0 +1,211 @@
+{% extends 'recognition/base.html' %}
+
+{% block title %}补货管理 - 智能售货系统{% endblock %}
+
+{% block content %}
+<div class="fade-in" style="margin-bottom: 32px;">
+    <h1 style="font-size: 28px; font-weight: 700; margin-bottom: 8px;
+        background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+        📦 补货管理
+    </h1>
+    <p style="color: var(--text-muted); font-size: 14px;">管理商品库存，及时补货保障供应</p>
+</div>
+
+<!-- 库存概览 -->
+<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px;">
+    <div class="card fade-in fade-in-d1" style="text-align: center; padding: 24px;">
+        <div style="font-size: 32px; margin-bottom: 8px;">📦</div>
+        <div style="font-size: 28px; font-weight: 700; color: var(--primary);">{{ products.count }}</div>
+        <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">商品总数</div>
+    </div>
+    <div class="card fade-in fade-in-d1" style="text-align: center; padding: 24px;">
+        <div style="font-size: 32px; margin-bottom: 8px;">⚠️</div>
+        <div style="font-size: 28px; font-weight: 700; color: #f59e0b;" id="low-stock-count">0</div>
+        <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">低库存预警</div>
+    </div>
+    <div class="card fade-in fade-in-d2" style="text-align: center; padding: 24px;">
+        <div style="font-size: 32px; margin-bottom: 8px;">🔴</div>
+        <div style="font-size: 28px; font-weight: 700; color: #ef4444;" id="out-of-stock-count">0</div>
+        <div style="color: var(--text-muted); font-size: 12px; margin-top: 4px;">已缺货</div>
+    </div>
+</div>
+
+<!-- 库存表格 -->
+<div class="card fade-in fade-in-d2">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2 style="font-size: 18px;">📋 商品库存</h2>
+        <span style="font-size: 12px; color: var(--text-muted);">点击"补货"按钮增加库存</span>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>商品名称</th>
+                <th>价格</th>
+                <th>当前库存</th>
+                <th>预警阈值</th>
+                <th>状态</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in products %}
+            <tr id="product-row-{{ p.id }}" {% if p.stock == 0 %}style="background: rgba(239,68,68,0.04);"{% elif p.is_low_stock %}style="background: rgba(245,158,11,0.04);"{% endif %}>
+                <td style="font-weight: 600;">{{ p.name }}</td>
+                <td style="color: #f472b6; font-weight: 700;">¥{{ p.price }}</td>
+                <td id="stock-{{ p.id }}">
+                    {% if p.stock == 0 %}
+                        <span style="color: #ef4444; font-weight: 700;">0 🔴</span>
+                    {% elif p.is_low_stock %}
+                        <span style="color: #f59e0b; font-weight: 600;">{{ p.stock }} ⚠️</span>
+                    {% else %}
+                        <span style="color: #10b981; font-weight: 600;">{{ p.stock }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ p.low_stock_threshold }}</td>
+                <td>
+                    {% if p.stock == 0 %}
+                        <span style="background: rgba(239,68,68,0.15); color: #dc2626; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;">缺货</span>
+                    {% elif p.is_low_stock %}
+                        <span style="background: rgba(245,158,11,0.15); color: #d97706; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;">偏低</span>
+                    {% else %}
+                        <span style="background: rgba(16,185,129,0.15); color: #059669; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;">充足</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <button class="btn btn-primary" style="padding: 6px 16px; font-size: 13px;"
+                            onclick="openRestockModal({{ p.id }}, '{{ p.name }}', {{ p.stock }})">
+                        📦 补货
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- 补货弹窗 -->
+<div class="modal-overlay" id="restockModal">
+    <div class="modal">
+        <h3>📦 补货 — <span id="modalProductName"></span></h3>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+            当前库存：<span id="modalCurrentStock" style="font-weight: 700;"></span>
+        </p>
+        <label>补货数量</label>
+        <input type="number" id="restockQuantity" min="1" value="10" placeholder="输入补货数量">
+        <label style="margin-top: 14px;">备注（可选）</label>
+        <input type="text" id="restockNote" placeholder="如：供应商补货">
+        <label style="margin-top: 14px;">操作人（可选）</label>
+        <input type="text" id="restockOperator" placeholder="如：张三">
+        <div class="modal-actions">
+            <button class="btn btn-success" id="confirmRestockBtn" onclick="confirmRestock()">确认补货</button>
+            <button class="btn btn-ghost" onclick="closeRestockModal()">取消</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast" style="position: fixed; top: 80px; right: 24px; z-index: 999; display: none;"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+var currentProductId = null;
+
+function updateCounts() {
+    var lowCount = 0, outCount = 0;
+    {% for p in products %}
+    {% if p.stock == 0 %}outCount++;
+    {% elif p.is_low_stock %}lowCount++;
+    {% endif %}
+    {% endfor %}
+    document.getElementById('low-stock-count').textContent = lowCount;
+    document.getElementById('out-of-stock-count').textContent = outCount;
+}
+updateCounts();
+
+function openRestockModal(id, name, stock) {
+    currentProductId = id;
+    document.getElementById('modalProductName').textContent = name;
+    document.getElementById('modalCurrentStock').textContent = stock;
+    document.getElementById('restockQuantity').value = 10;
+    document.getElementById('restockNote').value = '';
+    document.getElementById('restockModal').classList.add('show');
+}
+
+function closeRestockModal() {
+    document.getElementById('restockModal').classList.remove('show');
+    currentProductId = null;
+}
+
+function showToast(msg, success) {
+    var toast = document.getElementById('toast');
+    toast.innerHTML = '<div style="background: rgba(255,255,255,0.95); backdrop-filter: blur(12px); ' +
+        'border: 1px solid ' + (success ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)') + '; ' +
+        'padding: 14px 20px; border-radius: 12px; font-size: 14px; font-weight: 500; ' +
+        'box-shadow: 0 8px 32px rgba(0,0,0,0.1); color: ' + (success ? '#059669' : '#dc2626') + ';">' +
+        (success ? '✅ ' : '❌ ') + msg + '</div>';
+    toast.style.display = 'block';
+    setTimeout(function() { toast.style.display = 'none'; }, 3000);
+}
+
+function confirmRestock() {
+    var qty = parseInt(document.getElementById('restockQuantity').value);
+    if (!qty || qty <= 0) {
+        showToast('请输入有效的补货数量', false);
+        return;
+    }
+
+    var btn = document.getElementById('confirmRestockBtn');
+    btn.textContent = '补货中...';
+    btn.disabled = true;
+
+    fetch('/api/restock/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]') ?
+                document.querySelector('[name=csrfmiddlewaretoken]').value :
+                getCookie('csrftoken'),
+        },
+        body: JSON.stringify({
+            product_id: currentProductId,
+            quantity: qty,
+            note: document.getElementById('restockNote').value,
+            operator: document.getElementById('restockOperator').value,
+        }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            showToast(data.message, true);
+            // 更新库存显示
+            var stockEl = document.getElementById('stock-' + currentProductId);
+            if (data.new_stock > 0) {
+                stockEl.innerHTML = '<span style="color: #10b981; font-weight: 600;">' + data.new_stock + '</span>';
+            }
+            closeRestockModal();
+            // 刷新页面以更新状态
+            setTimeout(function() { location.reload(); }, 1000);
+        } else {
+            showToast(data.message, false);
+        }
+    })
+    .catch(function(e) {
+        showToast('请求失败: ' + e.message, false);
+    })
+    .finally(function() {
+        btn.textContent = '确认补货';
+        btn.disabled = false;
+    });
+}
+
+function getCookie(name) {
+    var value = '; ' + document.cookie;
+    var parts = value.split('; ' + name + '=');
+    if (parts.length === 2) return parts.pop().split(';').shift();
+    return '';
+}
+</script>
+{% endblock %}

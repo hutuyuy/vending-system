@@ -5,6 +5,9 @@ class Product(models.Model):
     name = models.CharField('商品名称', max_length=100)
     price = models.DecimalField('价格', max_digits=10, decimal_places=2)
     description = models.TextField('商品描述', blank=True, default='')
+    stock = models.PositiveIntegerField('库存', default=0)
+    low_stock_threshold = models.PositiveIntegerField('低库存阈值', default=5)
+    is_active = models.BooleanField('上架状态', default=True)
     created_at = models.DateTimeField('创建时间', auto_now_add=True)
 
     class Meta:
@@ -13,6 +16,27 @@ class Product(models.Model):
 
     def __str__(self):
         return f'{self.name} - ¥{self.price}'
+
+    @property
+    def is_low_stock(self):
+        return self.stock <= self.low_stock_threshold
+
+
+class RestockRecord(models.Model):
+    product = models.ForeignKey(Product, on_delete=models.CASCADE,
+                                related_name='restock_records', verbose_name='商品')
+    quantity = models.PositiveIntegerField('补货数量')
+    note = models.TextField('备注', blank=True, default='')
+    created_at = models.DateTimeField('补货时间', auto_now_add=True)
+    operator = models.CharField('操作人', max_length=100, blank=True, default='')
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = '补货记录'
+        verbose_name_plural = '补货记录'
+
+    def __str__(self):
+        return f'{self.product.name} +{self.quantity} ({self.created_at:%Y-%m-%d %H:%M})'
 
 
 class ProductImage(models.Model):

@@ -4,6 +4,8 @@ from . import views
 app_name = 'recognition'
 
 urlpatterns = [
+    path('login/', views.login_view, name='login'),
+    path('logout/', views.logout_view, name='logout'),
     path('', views.index, name='index'),
     path('products/', views.product_list, name='product_list'),
     path('checkout/', views.checkout, name='checkout'),
@@ -14,4 +16,6 @@ urlpatterns = [
     path('api/train/', views.train_model_view, name='train'),
     path('api/train/status/', views.training_status, name='train_status'),
     path('api/history/', views.training_history, name='training_history'),
+    path('restock/', views.restock_page, name='restock'),
+    path('api/restock/', views.restock_api, name='restock_api'),
 ]
