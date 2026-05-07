@@ -20,4 +20,5 @@ urlpatterns = [
     path('api/restock/', views.restock_api, name='restock_api'),
     # 新增：条形码扫描接口
     path('api/barcode/', views.barcode_scan, name='barcode_scan'),
+    path('api/barcode/bind/', views.barcode_bind, name='barcode_bind'),
 ]
