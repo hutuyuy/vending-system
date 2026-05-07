@@ -273,6 +273,9 @@ function doBarcodeScan(blob) {
             document.getElementById('result').innerHTML =
                 '<div class="msg-success">✅ 扫码成功：<strong>' + data.product_name +
                 '</strong>（条码：' + data.code + '）</div>';
+        } else if (data.need_bind) {
+            // 扫码成功但未匹配 → 弹出商品选择绑定
+            showBindUI(data.code, data.products);
         } else {
             document.getElementById('result').innerHTML =
                 '<div class="msg-error">❌ ' + data.message + '</div>';
@@ -284,26 +287,72 @@ function doBarcodeScan(blob) {
     });
 }
 
-function doBarcodeLookup(code) {
-    document.getElementById('result').innerHTML = '<p style="color:var(--accent);">🔍 查询中...</p>';
-    // 这里复用扫码接口，把条码内容当图片识别不行，所以直接查 API
-    // 需要一个纯条码查询接口，这里简单处理：用 JS 直接匹配购物车或提示
-    // 实际可以加一个 /api/barcode/lookup/ 接口
-    fetch('/api/barcode/', {
+function showBindUI(code, products) {
+    let options = '<option value="">-- 请选择商品 --</option>';
+    products.forEach(p => {
+        options += '<option value="' + p.id + '">' + p.name + '（¥' + parseFloat(p.price).toFixed(2) + '）</option>';
+    });
+    document.getElementById('result').innerHTML =
+        '<div style="background:rgba(99,102,241,0.1);border:1px solid var(--glass-border);border-radius:12px;padding:16px;margin-top:8px;">' +
+        '<p style="font-weight:600;margin-bottom:10px;">🔗 扫码成功！条码：<code>' + code + '</code></p>' +
+        '<p style="font-size:13px;color:var(--text-muted);margin-bottom:10px;">未找到对应商品，请选择绑定：</p>' +
+        '<select id="bindProductSelect" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--glass-border);background:rgba(0,0,0,0.3);color:var(--text);font-size:14px;margin-bottom:10px;">' +
+        options + '</select>' +
+        '<button class="btn btn-success" onclick="doBind(\'' + code + '\')" style="width:100%;">✅ 确认绑定并加入购物车</button>' +
+        '</div>';
+}
+
+function doBind(code) {
+    const select = document.getElementById('bindProductSelect');
+    const productId = select.value;
+    if (!productId) return alert('请先选择商品');
+
+    fetch('/api/barcode/bind/', {
         method: 'POST',
-        body: createFormDataWithText(code),
-        headers: { 'X-CSRFToken': getCookie('csrftoken') }
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({ code: code, product_id: parseInt(productId) })
     })
     .then(r => r.json())
     .then(data => {
         if (data.success) {
             addToCart(data.product_name, +data.price);
             document.getElementById('result').innerHTML =
-                '<div class="msg-success">✅ 查询成功：<strong>' + data.product_name + '</strong></div>';
+                '<div class="msg-success">✅ 绑定成功！已将 <strong>' + data.product_name +
+                '</strong> 加入购物车（条码：' + code + '）</div>';
         } else {
             document.getElementById('result').innerHTML =
                 '<div class="msg-error">❌ ' + data.message + '</div>';
         }
+    })
+    .catch(err => {
+        document.getElementById('result').innerHTML =
+            '<div class="msg-error">❌ 绑定失败：' + err.message + '</div>';
+    });
+}
+
+function doBarcodeLookup(code) {
+    document.getElementById('result').innerHTML = '<p style="color:var(--accent);">🔍 查询中...</p>';
+    // 直接查数据库 barcode 字段
+    fetch('/api/barcode/lookup/?code=' + encodeURIComponent(code))
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            addToCart(data.product_name, +data.price);
+            document.getElementById('result').innerHTML =
+                '<div class="msg-success">✅ 查询成功：<strong>' + data.product_name + '</strong></div>';
+        } else if (data.need_bind) {
+            showBindUI(code, data.products);
+        } else {
+            document.getElementById('result').innerHTML =
+                '<div class="msg-error">❌ ' + data.message + '</div>';
+        }
+    })
+    .catch(err => {
+        document.getElementById('result').innerHTML =
+            '<div class="msg-error">❌ 查询失败：' + err.message + '</div>';
     });
 }
 
