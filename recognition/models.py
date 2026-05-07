@@ -8,6 +8,7 @@ class Product(models.Model):
     stock = models.PositiveIntegerField('库存', default=0)
     low_stock_threshold = models.PositiveIntegerField('低库存阈值', default=5)
     is_active = models.BooleanField('上架状态', default=True)
+    barcode = models.CharField('条形码', max_length=50, blank=True, default='', help_text='商品条形码或二维码内容，用于扫码识别')
     created_at = models.DateTimeField('创建时间', auto_now_add=True)
 
     class Meta:
