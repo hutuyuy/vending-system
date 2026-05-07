@@ -113,7 +113,7 @@ def train_model(epochs=30, batch_size=8, learning_rate=0.001, patience=5):
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.classifier.parameters(), lr=learning_rate)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3, verbose=True)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3,)
 
     best_acc = 0.0
     no_improve = 0
