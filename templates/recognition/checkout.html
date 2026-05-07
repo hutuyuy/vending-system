@@ -56,7 +56,7 @@
                 </div>
                 <div id="barcodePH" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:var(--text-muted);">
                     <div style="font-size:48px;margin-bottom:8px;">🔲</div>
-                    <p>将条形码/二维码对准框内</p>
+                    <p>将条形码/二维码对准框内</p><p style="font-size:12px;margin-top:4px;opacity:0.7;">💡 条码距离镜头 15-30cm，保持稳定</p>
                 </div>
             </div>
             <div style="margin-top:14px;display:flex;gap:10px;">
@@ -151,7 +151,13 @@ function switchMode(mode) {
 function startCamera() {
     video = document.getElementById('video');
     canvas = document.getElementById('canvas');
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    navigator.mediaDevices.getUserMedia({
+        video: {
+            facingMode: 'environment',
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+        }
+    })
         .then(mediaStream => {
             stream = mediaStream;
             video.srcObject = stream;
@@ -227,11 +233,25 @@ function handleFileUpload(event) {
 function startBarcodeCamera() {
     barcodeVideo = document.getElementById('barcodeVideo');
     barcodeCanvas = document.getElementById('barcodeCanvas');
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    navigator.mediaDevices.getUserMedia({
+        video: {
+            facingMode: 'environment',
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            focusMode: 'continuous',
+            torch: false,
+        }
+    })
         .then(mediaStream => {
             barcodeStream = mediaStream;
             barcodeVideo.srcObject = barcodeStream;
             document.getElementById('barcodePH').style.display = 'none';
+            // 尝试开启闪光灯（部分手机支持）
+            const track = mediaStream.getVideoTracks()[0];
+            const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+            if (capabilities.torch) {
+                track.applyConstraints({ advanced: [{ torch: true }] }).catch(() => {});
+            }
         })
         .catch(err => {
             document.getElementById('result').innerHTML =
