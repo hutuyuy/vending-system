@@ -63,6 +63,12 @@
                 <button class="btn btn-primary" onclick="startBarcodeCamera()" style="flex:1;">开启摄像头</button>
                 <button class="btn btn-success" onclick="scanBarcode()" style="flex:1;">🔍 扫码识别</button>
             </div>
+            <div style="margin-top:10px;display:flex;gap:10px;">
+                <label class="btn btn-ghost" style="flex:1;cursor:pointer;text-align:center;">
+                    📁 上传条码图片
+                    <input type="file" accept="image/*" onchange="handleBarcodeUpload(event)" style="display:none;">
+                </label>
+            </div>
             <!-- 手动输入条码 -->
             <div style="margin-top:10px;display:flex;gap:10px;">
                 <input type="text" id="manualBarcode" placeholder="手动输入条形码..."
@@ -274,6 +280,13 @@ function manualBarcodeSubmit() {
     if (!code) return;
     // 直接用条码内容查商品
     doBarcodeLookup(code);
+}
+
+function handleBarcodeUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    doBarcodeScan(file);
+    event.target.value = '';
 }
 
 function doBarcodeScan(blob) {
