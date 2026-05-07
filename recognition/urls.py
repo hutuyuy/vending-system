@@ -21,4 +21,5 @@ urlpatterns = [
     # 新增：条形码扫描接口
     path('api/barcode/', views.barcode_scan, name='barcode_scan'),
     path('api/barcode/bind/', views.barcode_bind, name='barcode_bind'),
+    path('api/barcode/lookup/', views.barcode_lookup, name='barcode_lookup'),
 ]
