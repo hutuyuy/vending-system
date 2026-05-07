@@ -192,11 +192,15 @@ def barcode_scan(request):
                 'match_method': 'barcode',
             })
         else:
+            # 未匹配到 → 返回商品列表供用户选择绑定
+            all_products = list(Product.objects.filter(is_active=True).values('id', 'name', 'price'))
             return JsonResponse({
                 'success': False,
-                'message': f'扫码成功（{code_data}），但未匹配到商品。请手动添加。',
+                'message': f'扫码成功（{code_data}），但未匹配到商品。请选择商品绑定。',
                 'code': code_data,
                 'code_type': code_type,
+                'need_bind': True,
+                'products': all_products,
             })
 
     except Exception as e:
@@ -208,6 +212,44 @@ def barcode_scan(request):
                 os.remove(temp_path)
             except OSError:
                 pass
+
+
+# ============================================================
+#  条码绑定（新增）
+# ============================================================
+
+@require_POST
+def barcode_bind(request):
+    """将扫码结果绑定到指定商品"""
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'success': False, 'message': '请求数据格式错误'}, status=400)
+
+    code = data.get('code', '').strip()
+    product_id = data.get('product_id')
+
+    if not code or not product_id:
+        return JsonResponse({'success': False, 'message': '缺少条码或商品ID'}, status=400)
+
+    try:
+        product = Product.objects.get(pk=product_id)
+    except Product.DoesNotExist:
+        return JsonResponse({'success': False, 'message': '商品不存在'}, status=404)
+
+    # 保存条码到商品
+    product.barcode = code
+    product.save()
+
+    logger.info(f'条码绑定: {product.name} ← {code}')
+
+    return JsonResponse({
+        'success': True,
+        'message': f'已将条码 {code} 绑定到「{product.name}」',
+        'product_name': product.name,
+        'price': str(product.price),
+        'stock': product.stock,
+    })
 
 
 # ============================================================
