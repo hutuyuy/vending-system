@@ -9,6 +9,7 @@ from django.template.response import TemplateResponse
 from django.urls import path
 from django.utils import timezone
 from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 
 from .models import Product, ProductImage, Order, OrderItem, RestockRecord
 
@@ -137,11 +138,11 @@ class ProductAdmin(admin.ModelAdmin):
 
     def is_active_badge(self, obj):
         if obj.is_active:
-            return format_html(
+            return mark_safe(
                 '<span style="background:rgba(16,185,129,0.15); color:#059669; '
                 'padding:3px 10px; border-radius:12px; font-size:12px; font-weight:600;">已上架</span>'
             )
-        return format_html(
+        return mark_safe(
             '<span style="background:rgba(239,68,68,0.15); color:#dc2626; '
             'padding:3px 10px; border-radius:12px; font-size:12px; font-weight:600;">已下架</span>'
         )
@@ -150,16 +151,16 @@ class ProductAdmin(admin.ModelAdmin):
     def status_badge(self, obj):
         count = obj._image_count
         if count >= 8:
-            return format_html(
+            return mark_safe(
                 '<span style="background:rgba(16,185,129,0.15); color:#059669; padding:3px 10px; '
                 'border-radius:12px; font-size:12px; font-weight:600;">就绪</span>'
             )
         elif count > 0:
-            return format_html(
+            return mark_safe(
                 '<span style="background:rgba(245,158,11,0.15); color:#d97706; padding:3px 10px; '
                 'border-radius:12px; font-size:12px; font-weight:600;">图片不足</span>'
             )
-        return format_html(
+        return mark_safe(
             '<span style="background:rgba(239,68,68,0.15); color:#dc2626; padding:3px 10px; '
             'border-radius:12px; font-size:12px; font-weight:600;">无图片</span>'
         )
