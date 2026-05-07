@@ -286,7 +286,7 @@ def barcode_lookup(request):
             'code': code,
             'need_bind': True,
             'products': all_products,
-        })
+        }, status=404)
 
 
 # ============================================================
@@ -361,6 +361,7 @@ def checkout_submit(request):
     # 校验每个商品
     total = 0
     validated_items = []
+    missing_products = []
     for item in items:
         name = item.get('name', '')
         price = item.get('price', 0)
@@ -374,6 +375,13 @@ def checkout_submit(request):
         except (ValueError, TypeError):
             continue
 
+        # 检查商品是否存在
+        try:
+            product = Product.objects.get(name=name)
+        except Product.DoesNotExist:
+            missing_products.append(name)
+            continue
+
         subtotal = price * int(qty)
         total += subtotal
         validated_items.append({
@@ -383,36 +391,36 @@ def checkout_submit(request):
             'subtotal': round(subtotal, 2),
         })
 
+    if missing_products:
+        return JsonResponse({
+            'success': False,
+            'message': f'以下商品不存在: {", ".join(missing_products)}',
+        }, status=400)
+
     if not validated_items:
         return JsonResponse({'success': False, 'message': '没有有效的商品'}, status=400)
 
     # 检查库存
     for item in validated_items:
-        try:
-            product = Product.objects.get(name=item['name'])
-            if product.stock < item['qty']:
-                return JsonResponse({
-                    'success': False,
-                    'message': f'商品「{item["name"]}」库存不足，当前库存: {product.stock}',
-                }, status=400)
-            if product.stock == 0:
-                return JsonResponse({
-                    'success': False,
-                    'message': f'商品「{item["name"]}」已缺货',
-                }, status=400)
-        except Product.DoesNotExist:
-            pass
+        product = Product.objects.get(name=item['name'])
+        if product.stock < item['qty']:
+            return JsonResponse({
+                'success': False,
+                'message': f'商品「{item["name"]}」库存不足，当前库存: {product.stock}',
+            }, status=400)
+        if product.stock == 0:
+            return JsonResponse({
+                'success': False,
+                'message': f'商品「{item["name"]}」已缺货',
+            }, status=400)
 
     total = round(total, 2)
 
     # 扣减库存
     for item in validated_items:
-        try:
-            product = Product.objects.get(name=item['name'])
-            product.stock = max(0, product.stock - item['qty'])
-            product.save()
-        except Product.DoesNotExist:
-            pass
+        product = Product.objects.get(name=item['name'])
+        product.stock = max(0, product.stock - item['qty'])
+        product.save()
 
     # 保存订单到数据库
     import datetime

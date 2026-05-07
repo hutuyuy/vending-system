@@ -1,13 +1,37 @@
+# IDE
 .idea/
+.vscode/
+*.swp
+*.swo
+
+# Python
 venv/
+.venv/
 __pycache__/
-db.sqlite3
 *.pyc
-.env
-logs/
-media/temp/
-recognition/ml/saved_models/
-*.pth
+*.pyo
 *.egg-info/
 dist/
 build/
+
+# Django
+db.sqlite3
+*.sqlite3
+.env
+logs/
+staticfiles/
+
+# 媒体文件（运行时数据，不进版本控制）
+media/products/
+media/temp/
+media/
+
+# ML 模型文件
+recognition/ml/saved_models/
+*.pth
+*.pt
+*.onnx
+
+# OS
+.DS_Store
+Thumbs.db

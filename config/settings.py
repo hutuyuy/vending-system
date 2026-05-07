@@ -4,7 +4,12 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # 安全密钥 - 生产环境务必通过环境变量设置
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-vending-2026-dev-only')
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
+if not SECRET_KEY:
+    if os.environ.get('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes'):
+        SECRET_KEY = 'django-insecure-vending-2026-dev-only'
+    else:
+        raise ValueError('生产环境必须设置 DJANGO_SECRET_KEY 环境变量')
 
 # 生产环境关闭 DEBUG
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')

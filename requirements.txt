@@ -2,3 +2,4 @@ django>=5.0,<7.0
 pillow>=10.0
 torch>=2.0
 torchvision>=0.15
+pyzbar>=0.1.9
