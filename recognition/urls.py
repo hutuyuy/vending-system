@@ -18,4 +18,6 @@ urlpatterns = [
     path('api/history/', views.training_history, name='training_history'),
     path('restock/', views.restock_page, name='restock'),
     path('api/restock/', views.restock_api, name='restock_api'),
+    # 新增：条形码扫描接口
+    path('api/barcode/', views.barcode_scan, name='barcode_scan'),
 ]
