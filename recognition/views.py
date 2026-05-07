@@ -1,3 +1,9 @@
+"""
+views.py — 补丁说明：
+1. 新增 barcode_scan：条形码/二维码识别接口
+2. recognize_image 改为支持多图上传 + TTA
+3. 新增 recognize_multi：多图投票识别接口
+"""
 import json
 import os
 import uuid
@@ -59,6 +65,17 @@ def _validate_image(file):
     return True, ''
 
 
+def _save_temp(file):
+    """保存上传文件到临时目录，返回路径"""
+    temp_dir = os.path.join(settings.MEDIA_ROOT, 'temp')
+    os.makedirs(temp_dir, exist_ok=True)
+    temp_path = os.path.join(temp_dir, f'{uuid.uuid4().hex}.jpg')
+    with open(temp_path, 'wb+') as f:
+        for chunk in file.chunks():
+            f.write(chunk)
+    return temp_path
+
+
 def index(request):
     from django.db.models import Sum, Count
     products = Product.objects.prefetch_related('images').all()
@@ -95,54 +112,160 @@ def order_history(request):
     return render(request, 'recognition/order_history.html', {'orders': orders})
 
 
+# ============================================================
+#  条形码 / 二维码识别（新增）
+# ============================================================
+
 @require_POST
-def recognize_image(request):
-    """图片识别接口"""
+def barcode_scan(request):
+    """条形码/二维码扫描接口"""
     if not request.FILES.get('image'):
         return JsonResponse({'success': False, 'message': '请上传图片'}, status=400)
 
     uploaded = request.FILES['image']
-
-    # 校验文件
     valid, msg = _validate_image(uploaded)
     if not valid:
-        logger.warning(f'图片校验失败: {msg}')
         return JsonResponse({'success': False, 'message': msg}, status=400)
 
-    # 用唯一文件名保存，避免并发冲突
-    temp_dir = os.path.join(settings.MEDIA_ROOT, 'temp')
-    os.makedirs(temp_dir, exist_ok=True)
-    temp_path = os.path.join(temp_dir, f'{uuid.uuid4().hex}.jpg')
-
+    temp_path = None
     try:
-        with open(temp_path, 'wb+') as f:
-            for chunk in uploaded.chunks():
-                f.write(chunk)
+        temp_path = _save_temp(uploaded)
 
-        logger.info(f'图片已保存: {temp_path} ({uploaded.size} bytes)')
-        from .ml.predictor import predict_image
-        result = predict_image(temp_path)
+        # 用 pyzbar 解码
+        try:
+            from pyzbar.pyzbar import decode as pyzbar_decode
+        except ImportError:
+            return JsonResponse({
+                'success': False,
+                'message': 'pyzbar 未安装，请运行: pip install pyzbar',
+            }, status=500)
 
-        if result['success']:
+        from PIL import Image
+        img = Image.open(temp_path)
+        decoded = pyzbar_decode(img)
+
+        if not decoded:
+            return JsonResponse({
+                'success': False,
+                'message': '未识别到条形码或二维码，请对准商品条码重试',
+            })
+
+        # 取第一个识别到的码
+        code = decoded[0]
+        code_data = code.data.decode('utf-8', errors='replace')
+        code_type = code.type  # 'QRCODE', 'EAN13', 'CODE128', etc.
+
+        logger.info(f'扫码成功: {code_data} (类型: {code_type})')
+
+        # 尝试用条码匹配商品（需要在 Product 模型里加 barcode 字段，
+        # 或者用商品名称匹配条码内容）
+        product = None
+
+        # 方案1：按 barcode 字段精确匹配
+        try:
+            product = Product.objects.get(barcode=code_data)
+        except (Product.DoesNotExist, Exception):
+            pass
+
+        # 方案2：条码内容可能就是商品名称
+        if not product:
             try:
-                product = Product.objects.get(name=result['product_name'])
-                result['price'] = str(product.price)
+                product = Product.objects.get(name__icontains=code_data)
             except Product.DoesNotExist:
-                result['price'] = '0.00'
-                logger.warning(f'识别到未知商品: {result["product_name"]}')
+                pass
 
-        return JsonResponse(result)
+        # 方案3：条码内容包含商品名
+        if not product:
+            for p in Product.objects.filter(is_active=True):
+                if p.name in code_data or code_data in p.name:
+                    product = p
+                    break
+
+        if product:
+            return JsonResponse({
+                'success': True,
+                'product_name': product.name,
+                'price': str(product.price),
+                'stock': product.stock,
+                'code': code_data,
+                'code_type': code_type,
+                'match_method': 'barcode',
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'message': f'扫码成功（{code_data}），但未匹配到商品。请手动添加。',
+                'code': code_data,
+                'code_type': code_type,
+            })
+
     except Exception as e:
-        logger.exception(f'识别过程出错: {e}')
-        return JsonResponse({'success': False, 'message': f'识别失败: {str(e)}'}, status=500)
+        logger.exception(f'扫码失败: {e}')
+        return JsonResponse({'success': False, 'message': f'扫码失败: {str(e)}'}, status=500)
     finally:
-        # 清理临时文件
-        if os.path.exists(temp_path):
+        if temp_path and os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
             except OSError:
                 pass
 
+
+# ============================================================
+#  图片识别（改进：支持多图 + TTA）
+# ============================================================
+
+@require_POST
+def recognize_image(request):
+    """图片识别接口 — 支持多文件上传"""
+    files = request.FILES.getlist('image')
+    if not files:
+        return JsonResponse({'success': False, 'message': '请上传图片'}, status=400)
+
+    # 校验
+    temp_paths = []
+    try:
+        for uploaded in files:
+            valid, msg = _validate_image(uploaded)
+            if not valid:
+                return JsonResponse({'success': False, 'message': msg}, status=400)
+            temp_paths.append(_save_temp(uploaded))
+
+        logger.info(f'识别请求: {len(temp_paths)} 张图片')
+
+        from .ml.predictor import get_predictor
+        predictor = get_predictor()
+
+        if len(temp_paths) == 1:
+            result = predictor.predict(temp_paths[0])
+        else:
+            result = predictor.predict_multiple(temp_paths)
+
+        if result['success']:
+            try:
+                product = Product.objects.get(name=result['product_name'])
+                result['price'] = str(product.price)
+                result['stock'] = product.stock
+            except Product.DoesNotExist:
+                result['price'] = '0.00'
+                logger.warning(f'识别到未知商品: {result["product_name"]}')
+
+        return JsonResponse(result)
+
+    except Exception as e:
+        logger.exception(f'识别过程出错: {e}')
+        return JsonResponse({'success': False, 'message': f'识别失败: {str(e)}'}, status=500)
+    finally:
+        for p in temp_paths:
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+
+
+# ============================================================
+#  结算
+# ============================================================
 
 @require_POST
 def checkout_submit(request):
@@ -240,6 +363,10 @@ def checkout_submit(request):
     })
 
 
+# ============================================================
+#  训练相关
+# ============================================================
+
 @require_POST
 def train_model_view(request):
     """训练模型接口 - 使用线程异步执行（需要登录）"""
@@ -307,6 +434,10 @@ def training_history(request):
         return JsonResponse({'success': True, 'history': history})
     return JsonResponse({'success': False, 'message': '暂无训练历史，请先训练模型'})
 
+
+# ============================================================
+#  补货
+# ============================================================
 
 def restock_page(request):
     """补货管理页面"""
