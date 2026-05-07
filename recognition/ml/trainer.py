@@ -49,20 +49,20 @@ def get_transforms():
         transforms.Resize((256, 256)),
         transforms.RandomCrop(224),
         transforms.RandomHorizontalFlip(),
-        transforms.RandomVerticalFlip(p=0.2),          # 商品可能被倒放
-        transforms.RandomRotation(30),                   # 更大旋转范围
+        transforms.RandomVerticalFlip(p=0.2),
+        transforms.RandomRotation(30),
         transforms.ColorJitter(
             brightness=0.4, contrast=0.4,
-            saturation=0.3, hue=0.1,                    # 色调偏移
+            saturation=0.3, hue=0.1,
         ),
-        transforms.RandomAffine(                         # 模拟拍摄角度偏移
+        transforms.RandomAffine(
             degrees=0, translate=(0.1, 0.1),
             scale=(0.85, 1.15), shear=10,
         ),
-        transforms.RandomGrayscale(p=0.1),              # 偶尔灰度
-        transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),  # 模糊
-        transforms.RandomErasing(p=0.3, scale=(0.02, 0.15)),       # 遮挡
-        transforms.ToTensor(),
+        transforms.RandomGrayscale(p=0.1),
+        transforms.ToTensor(),                           # PIL → Tensor，必须在前
+        transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),  # Tensor 上操作
+        transforms.RandomErasing(p=0.3, scale=(0.02, 0.15)),       # Tensor 上操作
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
     ])
 
