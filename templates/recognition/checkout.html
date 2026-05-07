@@ -4,18 +4,73 @@
 
     <div class="card fade-in">
         <h2 style="margin-bottom:16px;">📷 商品识别</h2>
-        <div style="background:rgba(0,0,0,0.4); border-radius:14px; overflow:hidden; position:relative; aspect-ratio:4/3; border:1px solid var(--glass-border);">
-            <video id="video" autoplay playsinline style="width:100%;height:100%;object-fit:cover;"></video>
-            <canvas id="canvas" style="display:none;"></canvas>
-            <div id="ph" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:var(--text-muted);">
-                <div style="font-size:48px;margin-bottom:8px;">📷</div>
-                <p>点击下方按钮开启摄像头</p>
+
+        <!-- 识别模式切换 -->
+        <div style="display:flex; gap:8px; margin-bottom:14px;">
+            <button class="btn btn-primary" id="modeCamera" onclick="switchMode('camera')" style="flex:1;">
+                📷 拍照识别
+            </button>
+            <button class="btn btn-ghost" id="modeBarcode" onclick="switchMode('barcode')" style="flex:1;">
+                🔲 扫码识别
+            </button>
+        </div>
+
+        <!-- 摄像头区域 -->
+        <div id="cameraSection">
+            <div style="background:rgba(0,0,0,0.4); border-radius:14px; overflow:hidden; position:relative; aspect-ratio:4/3; border:1px solid var(--glass-border);">
+                <video id="video" autoplay playsinline style="width:100%;height:100%;object-fit:cover;"></video>
+                <canvas id="canvas" style="display:none;"></canvas>
+                <div id="ph" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:var(--text-muted);">
+                    <div style="font-size:48px;margin-bottom:8px;">📷</div>
+                    <p>点击下方按钮开启摄像头</p>
+                </div>
+            </div>
+            <div style="margin-top:14px;display:flex;gap:10px;">
+                <button class="btn btn-primary" onclick="startCamera()" style="flex:1;">开启摄像头</button>
+                <button class="btn btn-success" onclick="capture()" style="flex:1;">📸 拍照识别</button>
+            </div>
+            <!-- 多图识别 -->
+            <div style="margin-top:10px;display:flex;gap:10px;">
+                <button class="btn btn-ghost" onclick="captureMulti()" style="flex:1;">
+                    📸📸 多角度拍3张
+                </button>
+                <label class="btn btn-ghost" style="flex:1;cursor:pointer;text-align:center;">
+                    📁 上传图片
+                    <input type="file" accept="image/*" multiple onchange="handleFileUpload(event)" style="display:none;">
+                </label>
             </div>
         </div>
-        <div style="margin-top:14px;display:flex;gap:10px;">
-            <button class="btn btn-primary" onclick="startCamera()" style="flex:1;">开启摄像头</button>
-            <button class="btn btn-success" onclick="capture()" style="flex:1;">📸 拍照识别</button>
+
+        <!-- 扫码区域 -->
+        <div id="barcodeSection" style="display:none;">
+            <div style="background:rgba(0,0,0,0.4); border-radius:14px; overflow:hidden; position:relative; aspect-ratio:4/3; border:1px solid var(--glass-border);">
+                <video id="barcodeVideo" autoplay playsinline style="width:100%;height:100%;object-fit:cover;"></video>
+                <canvas id="barcodeCanvas" style="display:none;"></canvas>
+                <!-- 扫码框指示 -->
+                <div id="scanOverlay" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+                    width:70%;height:30%;border:2px solid #22c55e;border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,0.4);">
+                    <div style="position:absolute;top:-2px;left:0;width:30px;height:4px;background:#22c55e;border-radius:2px;"></div>
+                    <div style="position:absolute;top:-2px;right:0;width:30px;height:4px;background:#22c55e;border-radius:2px;"></div>
+                    <div style="position:absolute;bottom:-2px;left:0;width:30px;height:4px;background:#22c55e;border-radius:2px;"></div>
+                    <div style="position:absolute;bottom:-2px;right:0;width:30px;height:4px;background:#22c55e;border-radius:2px;"></div>
+                </div>
+                <div id="barcodePH" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:var(--text-muted);">
+                    <div style="font-size:48px;margin-bottom:8px;">🔲</div>
+                    <p>将条形码/二维码对准框内</p>
+                </div>
+            </div>
+            <div style="margin-top:14px;display:flex;gap:10px;">
+                <button class="btn btn-primary" onclick="startBarcodeCamera()" style="flex:1;">开启摄像头</button>
+                <button class="btn btn-success" onclick="scanBarcode()" style="flex:1;">🔍 扫码识别</button>
+            </div>
+            <!-- 手动输入条码 -->
+            <div style="margin-top:10px;display:flex;gap:10px;">
+                <input type="text" id="manualBarcode" placeholder="手动输入条形码..."
+                    style="flex:1;padding:10px 14px;border-radius:10px;border:1px solid var(--glass-border);background:rgba(0,0,0,0.3);color:var(--text);font-size:14px;">
+                <button class="btn btn-ghost" onclick="manualBarcodeSubmit()">查询</button>
+            </div>
         </div>
+
         <div id="result" style="margin-top:14px;"></div>
     </div>
 
@@ -58,7 +113,40 @@
 
 {% block scripts %}
 <script>
-let video, canvas, stream, cart = [];
+let video, canvas, stream;
+let barcodeVideo, barcodeCanvas, barcodeStream;
+let cart = [];
+let currentMode = 'camera';
+let multiCaptureCount = 0;
+let multiCapturePaths = [];
+
+// ============================================================
+//  模式切换
+// ============================================================
+
+function switchMode(mode) {
+    currentMode = mode;
+    document.getElementById('cameraSection').style.display = mode === 'camera' ? 'block' : 'none';
+    document.getElementById('barcodeSection').style.display = mode === 'barcode' ? 'block' : 'none';
+    document.getElementById('modeCamera').className = mode === 'camera' ? 'btn btn-primary' : 'btn btn-ghost';
+    document.getElementById('modeBarcode').className = mode === 'barcode' ? 'btn btn-primary' : 'btn btn-ghost';
+
+    // 关闭另一个模式的摄像头
+    if (mode === 'camera' && barcodeStream) {
+        barcodeStream.getTracks().forEach(t => t.stop());
+        barcodeStream = null;
+    }
+    if (mode === 'barcode' && stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+    }
+
+    document.getElementById('result').innerHTML = '';
+}
+
+// ============================================================
+//  摄像头识别
+// ============================================================
 
 function startCamera() {
     video = document.getElementById('video');
@@ -82,32 +170,186 @@ function capture() {
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0);
     canvas.toBlob(blob => {
-        const formData = new FormData();
-        formData.append('image', blob, 'capture.jpg');
-        document.getElementById('result').innerHTML = '<p style="color:var(--accent)">🔄 识别中...</p>';
-        fetch('/api/recognize/', { method: 'POST', body: formData, headers: { 'X-CSRFToken': getCookie('csrftoken') } })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    addToCart(data.product_name, +data.price);
-                    document.getElementById('result').innerHTML =
-                        '<div class="msg-success">✅ 识别成功：<strong>' + data.product_name +
-                        '</strong>（置信度：' + (data.confidence * 100).toFixed(1) + '%）</div>';
-                } else {
-                    const hint = data.top_guess
-                        ? '<br><span style="font-size:13px;opacity:.8">最接近的猜测：' + data.top_guess +
-                          '（' + (data.confidence * 100).toFixed(1) + '%）</span>'
-                        : '';
-                    document.getElementById('result').innerHTML =
-                        '<div class="msg-error">❌ ' + data.message + hint + '</div>';
-                }
-            })
-            .catch(err => {
-                document.getElementById('result').innerHTML =
-                    '<div class="msg-error">❌ ' + err.message + '</div>';
-            });
+        doRecognize([blob]);
     }, 'image/jpeg');
 }
+
+// 多角度拍3张
+function captureMulti() {
+    if (!stream) return alert('请先开启摄像头');
+    if (multiCaptureCount === 0) {
+        multiCaptureCount = 0;
+        multiCapturePaths = [];
+        document.getElementById('result').innerHTML =
+            '<div style="color:var(--accent);">📸 拍第 1/3 张（正面），请调整角度后点击继续...</div>' +
+            '<button class="btn btn-primary" onclick="_doMultiCapture()" style="margin-top:8px;">📸 拍摄</button>';
+        multiCaptureCount = 1;
+    }
+}
+
+function _doMultiCapture() {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+
+    canvas.toBlob(blob => {
+        multiCapturePaths.push(blob);
+        if (multiCapturePaths.length < 3) {
+            const angles = ['正面', '侧面', '斜角'];
+            document.getElementById('result').innerHTML =
+                '<div style="color:var(--accent);">📸 已拍 ' + multiCapturePaths.length + '/3 张，请转到' +
+                angles[multiCapturePaths.length] + '后点击继续...</div>' +
+                '<button class="btn btn-primary" onclick="_doMultiCapture()" style="margin-top:8px;">📸 拍摄</button>';
+        } else {
+            document.getElementById('result').innerHTML = '<p style="color:var(--accent);">🔄 多图识别中...</p>';
+            doRecognize(multiCapturePaths);
+            multiCaptureCount = 0;
+            multiCapturePaths = [];
+        }
+    }, 'image/jpeg');
+}
+
+// 文件上传（支持多选）
+function handleFileUpload(event) {
+    const files = Array.from(event.target.files);
+    if (!files.length) return;
+    const blobs = files.map(f => f);
+    document.getElementById('result').innerHTML =
+        '<p style="color:var(--accent);">🔄 识别中（' + blobs.length + ' 张图片）...</p>';
+    doRecognize(blobs);
+    event.target.value = '';
+}
+
+// ============================================================
+//  条码识别
+// ============================================================
+
+function startBarcodeCamera() {
+    barcodeVideo = document.getElementById('barcodeVideo');
+    barcodeCanvas = document.getElementById('barcodeCanvas');
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        .then(mediaStream => {
+            barcodeStream = mediaStream;
+            barcodeVideo.srcObject = barcodeStream;
+            document.getElementById('barcodePH').style.display = 'none';
+        })
+        .catch(err => {
+            document.getElementById('result').innerHTML =
+                '<div class="msg-error">❌ 摄像头无法开启：' + err.message + '</div>';
+        });
+}
+
+function scanBarcode() {
+    if (!barcodeStream) return alert('请先开启摄像头');
+    barcodeCanvas.width = barcodeVideo.videoWidth;
+    barcodeCanvas.height = barcodeVideo.videoHeight;
+    barcodeCanvas.getContext('2d').drawImage(barcodeVideo, 0, 0);
+    barcodeCanvas.toBlob(blob => {
+        doBarcodeScan(blob);
+    }, 'image/jpeg');
+}
+
+function manualBarcodeSubmit() {
+    const code = document.getElementById('manualBarcode').value.trim();
+    if (!code) return;
+    // 直接用条码内容查商品
+    doBarcodeLookup(code);
+}
+
+function doBarcodeScan(blob) {
+    const formData = new FormData();
+    formData.append('image', blob, 'barcode.jpg');
+    document.getElementById('result').innerHTML = '<p style="color:var(--accent);">🔍 扫码中...</p>';
+
+    fetch('/api/barcode/', {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-CSRFToken': getCookie('csrftoken') }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            addToCart(data.product_name, +data.price);
+            document.getElementById('result').innerHTML =
+                '<div class="msg-success">✅ 扫码成功：<strong>' + data.product_name +
+                '</strong>（条码：' + data.code + '）</div>';
+        } else {
+            document.getElementById('result').innerHTML =
+                '<div class="msg-error">❌ ' + data.message + '</div>';
+        }
+    })
+    .catch(err => {
+        document.getElementById('result').innerHTML =
+            '<div class="msg-error">❌ ' + err.message + '</div>';
+    });
+}
+
+function doBarcodeLookup(code) {
+    document.getElementById('result').innerHTML = '<p style="color:var(--accent);">🔍 查询中...</p>';
+    // 这里复用扫码接口，把条码内容当图片识别不行，所以直接查 API
+    // 需要一个纯条码查询接口，这里简单处理：用 JS 直接匹配购物车或提示
+    // 实际可以加一个 /api/barcode/lookup/ 接口
+    fetch('/api/barcode/', {
+        method: 'POST',
+        body: createFormDataWithText(code),
+        headers: { 'X-CSRFToken': getCookie('csrftoken') }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            addToCart(data.product_name, +data.price);
+            document.getElementById('result').innerHTML =
+                '<div class="msg-success">✅ 查询成功：<strong>' + data.product_name + '</strong></div>';
+        } else {
+            document.getElementById('result').innerHTML =
+                '<div class="msg-error">❌ ' + data.message + '</div>';
+        }
+    });
+}
+
+// ============================================================
+//  识别核心
+// ============================================================
+
+function doRecognize(blobs) {
+    const formData = new FormData();
+    blobs.forEach((blob, i) => {
+        formData.append('image', blob, `capture_${i}.jpg`);
+    });
+
+    fetch('/api/recognize/', {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-CSRFToken': getCookie('csrftoken') }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            addToCart(data.product_name, +data.price);
+            let extra = '';
+            if (data.image_count) extra = '（' + data.image_count + ' 张图综合判断）';
+            if (data.stock !== undefined) extra += ' | 库存: ' + data.stock;
+            document.getElementById('result').innerHTML =
+                '<div class="msg-success">✅ 识别成功：<strong>' + data.product_name +
+                '</strong>（置信度：' + (data.confidence * 100).toFixed(1) + '%）' + extra + '</div>';
+        } else {
+            const hint = data.top_guess
+                ? '<br><span style="font-size:13px;opacity:.8">最接近的猜测：' + data.top_guess +
+                  '（' + (data.confidence * 100).toFixed(1) + '%）</span>'
+                : '';
+            document.getElementById('result').innerHTML =
+                '<div class="msg-error">❌ ' + data.message + hint + '</div>';
+        }
+    })
+    .catch(err => {
+        document.getElementById('result').innerHTML =
+            '<div class="msg-error">❌ ' + err.message + '</div>';
+    });
+}
+
+// ============================================================
+//  购物车（不变）
+// ============================================================
 
 function addToCart(name, price) {
     const existing = cart.find(item => item.name === name);
@@ -184,7 +426,6 @@ function doCheckout() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // 显示成功弹窗
             document.getElementById('orderNoText').textContent = '订单号：' + data.order_no;
             document.getElementById('orderTotalText').textContent = '¥' + data.total.toFixed(2);
             let itemsHtml = '';
@@ -198,17 +439,14 @@ function doCheckout() {
             cart = [];
             renderCart();
         } else {
-            alert('失败：' + data.message);
+            alert(data.message || '结算失败');
         }
-    });
+    })
+    .catch(err => alert('结算请求失败: ' + err.message));
 }
 
 function closeSuccessModal() {
     document.getElementById('successModal').classList.remove('show');
 }
-
-window.addEventListener('beforeunload', () => {
-    if (stream) stream.getTracks().forEach(track => track.stop());
-});
 </script>
 {% endblock %}
