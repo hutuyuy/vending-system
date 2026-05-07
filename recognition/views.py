@@ -252,6 +252,43 @@ def barcode_bind(request):
     })
 
 
+def barcode_lookup(request):
+    """手动输入条码查询（GET）"""
+    code = request.GET.get('code', '').strip()
+    if not code:
+        return JsonResponse({'success': False, 'message': '请输入条码'}, status=400)
+
+    product = None
+    try:
+        product = Product.objects.get(barcode=code)
+    except (Product.DoesNotExist, Exception):
+        pass
+
+    if not product:
+        try:
+            product = Product.objects.get(name__icontains=code)
+        except Product.DoesNotExist:
+            pass
+
+    if product:
+        return JsonResponse({
+            'success': True,
+            'product_name': product.name,
+            'price': str(product.price),
+            'stock': product.stock,
+            'code': code,
+        })
+    else:
+        all_products = list(Product.objects.filter(is_active=True).values('id', 'name', 'price'))
+        return JsonResponse({
+            'success': False,
+            'message': f'未找到条码 {code} 对应的商品，请选择绑定。',
+            'code': code,
+            'need_bind': True,
+            'products': all_products,
+        })
+
+
 # ============================================================
 #  图片识别（改进：支持多图 + TTA）
 # ============================================================
