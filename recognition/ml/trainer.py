@@ -13,11 +13,15 @@ try:
 except ImportError:
     HAS_TORCH = False
 
-from PIL import Image
+from PIL import Image, ImageFilter, ImageEnhance
 from django.conf import settings
 
 logger = logging.getLogger('recognition')
 
+
+# ============================================================
+#  数据集
+# ============================================================
 
 class ProductDataset(Dataset):
     def __init__(self, image_paths, labels, transform=None):
@@ -35,16 +39,33 @@ class ProductDataset(Dataset):
         return img, self.labels[idx]
 
 
+# ============================================================
+#  数据增强 — 比原来更贴近真实售货场景
+# ============================================================
+
 def get_transforms():
+    """训练时增强更激进，模拟真实货架环境"""
     train_transform = transforms.Compose([
         transforms.Resize((256, 256)),
         transforms.RandomCrop(224),
         transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation(15),
-        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3),
+        transforms.RandomVerticalFlip(p=0.2),          # 商品可能被倒放
+        transforms.RandomRotation(30),                   # 更大旋转范围
+        transforms.ColorJitter(
+            brightness=0.4, contrast=0.4,
+            saturation=0.3, hue=0.1,                    # 色调偏移
+        ),
+        transforms.RandomAffine(                         # 模拟拍摄角度偏移
+            degrees=0, translate=(0.1, 0.1),
+            scale=(0.85, 1.15), shear=10,
+        ),
+        transforms.RandomGrayscale(p=0.1),              # 偶尔灰度
+        transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),  # 模糊
+        transforms.RandomErasing(p=0.3, scale=(0.02, 0.15)),       # 遮挡
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
     ])
+
     val_transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
@@ -52,6 +73,10 @@ def get_transforms():
     ])
     return train_transform, val_transform
 
+
+# ============================================================
+#  数据收集 + 每张图复制增强版本扩充小样本
+# ============================================================
 
 def collect_data():
     from recognition.models import Product, ProductImage
@@ -71,8 +96,46 @@ def collect_data():
             if os.path.exists(full_path):
                 image_paths.append(full_path)
                 labels.append(idx)
-    return image_paths, labels, label_map, label_names
 
+    # 记录原始样本数（不包含增强副本）
+    original_count = len(image_paths)
+    logger.info(f'原始训练样本: {original_count} 张, {len(label_names)} 个类别')
+
+    # 如果每个类别样本少于 5 张，用轻量离线增强扩充
+    from collections import Counter
+    label_counts = Counter(labels)
+    augmented_paths = list(image_paths)
+    augmented_labels = list(labels)
+
+    offline_aug = transforms.Compose([
+        transforms.RandomHorizontalFlip(p=1.0),
+        transforms.ColorJitter(brightness=0.3, contrast=0.3),
+    ])
+
+    for label_id, count in label_counts.items():
+        if count < 5:
+            need = 5 - count
+            class_paths = [p for p, l in zip(image_paths, labels) if l == label_id]
+            for i in range(need):
+                src = class_paths[i % len(class_paths)]
+                # 生成增强副本（保存到临时目录）
+                try:
+                    img = Image.open(src).convert('RGB')
+                    aug_img = offline_aug(img)
+                    aug_path = src + f'.aug{i}.jpg'
+                    aug_img.save(aug_path, 'JPEG', quality=85)
+                    augmented_paths.append(aug_path)
+                    augmented_labels.append(label_id)
+                except Exception as e:
+                    logger.warning(f'离线增强失败 {src}: {e}')
+
+    logger.info('扩充后训练样本: %d 张', len(augmented_paths))
+    return augmented_paths, augmented_labels, label_map, label_names
+
+
+# ============================================================
+#  训练主函数
+# ============================================================
 
 def train_model(epochs=30, batch_size=8, learning_rate=0.001, patience=5):
     image_paths, labels, label_map, label_names = collect_data()
@@ -84,7 +147,7 @@ def train_model(epochs=30, batch_size=8, learning_rate=0.001, patience=5):
 
     train_transform, val_transform = get_transforms()
 
-    # 分别创建训练集和验证集，验证集使用 val_transform（无数据增强）
+    # 分别创建训练集和验证集
     full_indices = list(range(len(image_paths)))
     train_size = int(0.8 * len(full_indices))
     val_size = len(full_indices) - train_size
@@ -107,19 +170,43 @@ def train_model(epochs=30, batch_size=8, learning_rate=0.001, patience=5):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.DEFAULT)
 
-    for param in model.features.parameters():
-        param.requires_grad = False
+    # ========================================================
+    # 关键改动：解冻最后 30% 的特征层，让模型学到商品特有特征
+    # ========================================================
+    total_layers = len(model.features)
+    freeze_until = int(total_layers * 0.7)  # 前 70% 冻结，后 30% 可训练
+
+    for i, param in enumerate(model.features.parameters()):
+        if i < freeze_until:
+            param.requires_grad = False
+        else:
+            param.requires_grad = True
+
+    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    total_params = sum(p.numel() for p in model.parameters())
+    logger.info(f'可训练参数: {trainable:,} / {total_params:,} ({trainable/total_params*100:.1f}%)')
 
     num_classes = len(label_names)
     model.classifier = nn.Sequential(
-        nn.Dropout(0.2),
+        nn.Dropout(0.3),   # 稍微提高 dropout 防过拟合
         nn.Linear(model.last_channel, num_classes),
     )
     model = model.to(device)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.classifier.parameters(), lr=learning_rate)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3,)
+
+    # 分层学习率：特征层小学习率，分类器大学习率
+    feature_params = [p for p in model.features.parameters() if p.requires_grad]
+    classifier_params = model.classifier.parameters()
+
+    optimizer = optim.Adam([
+        {'params': feature_params, 'lr': learning_rate * 0.1},   # 特征层 10x 小学习率
+        {'params': classifier_params, 'lr': learning_rate},       # 分类器正常学习率
+    ], weight_decay=1e-4)  # 加 L2 正则
+
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='max', factor=0.5, patience=3,
+    )
 
     best_acc = 0.0
     no_improve = 0
@@ -174,7 +261,7 @@ def train_model(epochs=30, batch_size=8, learning_rate=0.001, patience=5):
 
         val_acc = 100.0 * val_correct / val_total if val_total > 0 else 0
         epoch_time = round(time.time() - epoch_start, 2)
-        current_lr = optimizer.param_groups[0]['lr']
+        current_lr = optimizer.param_groups[1]['lr']  # 取分类器 lr
 
         # 混淆矩阵
         cm = [[0] * num_classes for _ in range(num_classes)]
@@ -200,7 +287,11 @@ def train_model(epochs=30, batch_size=8, learning_rate=0.001, patience=5):
         else:
             no_improve += 1
 
-        logger.info(f'Epoch [{epoch+1}/{epochs}] Loss: {avg_loss:.4f} Train: {train_acc:.1f}% Val: {val_acc:.1f}% LR: {current_lr:.6f} Time: {epoch_time}s')
+        logger.info(
+            f'Epoch [{epoch+1}/{epochs}] Loss: {avg_loss:.4f} '
+            f'Train: {train_acc:.1f}% Val: {val_acc:.1f}% '
+            f'LR: {current_lr:.6f} Time: {epoch_time}s'
+        )
 
         if no_improve >= patience:
             logger.info(f'Early stopping at epoch {epoch+1}，{patience}轮无提升')
@@ -212,6 +303,14 @@ def train_model(epochs=30, batch_size=8, learning_rate=0.001, patience=5):
     # 重置预测器单例
     import recognition.ml.predictor as pred_module
     pred_module._predictor = None
+
+    # 清理离线增强副本
+    for p in image_paths:
+        if '.aug' in p and os.path.exists(p):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
 
     return {
         'success': True,
@@ -225,6 +324,10 @@ def train_model(epochs=30, batch_size=8, learning_rate=0.001, patience=5):
         'early_stopped': no_improve >= patience,
     }
 
+
+# ============================================================
+#  保存 / 加载
+# ============================================================
 
 def save_model(model, label_map, label_names, num_classes):
     model_dir = os.path.join(settings.BASE_DIR, 'recognition', 'ml', 'saved_models')
@@ -252,7 +355,9 @@ def save_history(history):
 
 
 def load_history():
-    history_path = os.path.join(settings.BASE_DIR, 'recognition', 'ml', 'saved_models', 'train_history.json')
+    history_path = os.path.join(
+        settings.BASE_DIR, 'recognition', 'ml', 'saved_models', 'train_history.json'
+    )
     if os.path.exists(history_path):
         with open(history_path, 'r', encoding='utf-8') as f:
             return json.load(f)
