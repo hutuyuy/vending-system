@@ -101,11 +101,11 @@
             <tr>
                 <td style="font-weight:600;">{{ p.name }}</td>
                 <td style="color:#f472b6; font-weight:700;">¥{{ p.price }}</td>
-                <td>{{ p.images.count }} 张</td>
+                <td>{{ p.image_count }} 张</td>
                 <td>
-                    {% if p.images.count >= 8 %}
+                    {% if p.image_count >= 8 %}
                         <span style="color:#6ee7b7;">✅ 就绪</span>
-                    {% elif p.images.count > 0 %}
+                    {% elif p.image_count > 0 %}
                         <span style="color:#fcd34d;">⏳ 图片不足</span>
                     {% else %}
                         <span style="color:#f87171;">❌ 无图片</span>

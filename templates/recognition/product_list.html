@@ -25,10 +25,10 @@
                 <p style="color:#f472b6; font-size:22px; font-weight:700; margin:6px 0;">¥{{ p.price }}</p>
             </div>
             <div style="text-align:right;">
-                {% if p.images.count >= 8 %}
-                    <span style="background:rgba(16,185,129,0.2); color:#6ee7b7; padding:4px 10px; border-radius:20px; font-size:12px;">✅ {{ p.images.count }}张</span>
-                {% elif p.images.count > 0 %}
-                    <span style="background:rgba(252,211,77,0.2); color:#fcd34d; padding:4px 10px; border-radius:20px; font-size:12px;">⏳ {{ p.images.count }}张</span>
+                {% if p.image_count >= 8 %}
+                    <span style="background:rgba(16,185,129,0.2); color:#6ee7b7; padding:4px 10px; border-radius:20px; font-size:12px;">✅ {{ p.image_count }}张</span>
+                {% elif p.image_count > 0 %}
+                    <span style="background:rgba(252,211,77,0.2); color:#fcd34d; padding:4px 10px; border-radius:20px; font-size:12px;">⏳ {{ p.image_count }}张</span>
                 {% else %}
                     <span style="background:rgba(248,113,113,0.2); color:#f87171; padding:4px 10px; border-radius:20px; font-size:12px;">❌ 无图片</span>
                 {% endif %}
@@ -80,21 +80,6 @@
 
 {% block scripts %}
 <script>
-function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-        const cookies = document.cookie.split(';');
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
-    }
-    return cookieValue;
-}
-
 function startTraining() {
     const btn = document.getElementById('trainBtn');
     const result = document.getElementById('trainResult');

@@ -17,6 +17,7 @@ from django.http import JsonResponse
 from django.shortcuts import render, redirect
 from django.views.decorators.http import require_POST
 
+from django.db.models import Count
 from .models import Product, Order, OrderItem, RestockRecord
 
 logger = logging.getLogger('recognition')
@@ -77,8 +78,8 @@ def _save_temp(file):
 
 
 def index(request):
-    from django.db.models import Sum, Count
-    products = Product.objects.prefetch_related('images').all()
+    from django.db.models import Sum
+    products = Product.objects.prefetch_related('images').annotate(image_count=Count('images')).all()
     recent_orders = Order.objects.prefetch_related('items').all()[:5]
     order_stats = Order.objects.aggregate(count=Count('id'), revenue=Sum('total'))
     stats = {
@@ -95,7 +96,7 @@ def index(request):
 
 
 def product_list(request):
-    products = Product.objects.prefetch_related('images').all()
+    products = Product.objects.prefetch_related('images').annotate(image_count=Count('images')).all()
     return render(request, 'recognition/product_list.html', {'products': products})
 
 
@@ -326,6 +327,7 @@ def recognize_image(request):
                 result['stock'] = product.stock
             except Product.DoesNotExist:
                 result['price'] = '0.00'
+                result['stock'] = 0
                 logger.warning(f'识别到未知商品: {result["product_name"]}')
 
         return JsonResponse(result)
@@ -346,6 +348,7 @@ def recognize_image(request):
 #  结算
 # ============================================================
 
+@require_POST
 @require_POST
 def checkout_submit(request):
     """结算提交接口"""
@@ -407,11 +410,6 @@ def checkout_submit(request):
             return JsonResponse({
                 'success': False,
                 'message': f'商品「{item["name"]}」库存不足，当前库存: {product.stock}',
-            }, status=400)
-        if product.stock == 0:
-            return JsonResponse({
-                'success': False,
-                'message': f'商品「{item["name"]}」已缺货',
             }, status=400)
 
     total = round(total, 2)
