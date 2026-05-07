@@ -18,7 +18,7 @@ logger = logging.getLogger('recognition')
 # ========================================================
 # 提高置信度阈值：宁可说"不认识"也别认错
 # ========================================================
-MIN_CONFIDENCE = 0.50
+MIN_CONFIDENCE = 0.63
 
 
 class ProductPredictor:
