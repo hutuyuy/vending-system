@@ -47,6 +47,18 @@ class ProductPredictor:
                 transforms.ToTensor(),
                 transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
             ]),
+            transforms.Compose([
+                transforms.Resize((224, 224)),
+                transforms.RandomHorizontalFlip(p=1.0),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]),
+            transforms.Compose([
+                transforms.Resize((192, 192)),
+                transforms.Pad(16, fill=0),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]),
         ]
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.loaded = False
