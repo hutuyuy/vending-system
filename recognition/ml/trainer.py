@@ -15,6 +15,7 @@ except ImportError:
 
 from PIL import Image, ImageFilter, ImageEnhance
 from django.conf import settings
+from sklearn.model_selection import train_test_split
 
 logger = logging.getLogger('recognition')
 
@@ -48,21 +49,13 @@ def get_transforms():
     train_transform = transforms.Compose([
         transforms.Resize((256, 256)),
         transforms.RandomCrop(224),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomVerticalFlip(p=0.2),
-        transforms.RandomRotation(30),
-        transforms.ColorJitter(
-            brightness=0.4, contrast=0.4,
-            saturation=0.3, hue=0.1,
-        ),
-        transforms.RandomAffine(
-            degrees=0, translate=(0.1, 0.1),
-            scale=(0.85, 1.15), shear=10,
-        ),
-        transforms.RandomGrayscale(p=0.1),
-        transforms.ToTensor(),                           # PIL → Tensor，必须在前
-        transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),  # Tensor 上操作
-        transforms.RandomErasing(p=0.3, scale=(0.02, 0.15)),       # Tensor 上操作
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomRotation(10),
+        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2),
+        transforms.RandomAffine(degrees=0, translate=(0.05, 0.05), scale=(0.9, 1.1)),
+        transforms.ToTensor(),
+        transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0)),
+        transforms.RandomErasing(p=0.2, scale=(0.02, 0.1)),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
     ])
 
@@ -101,7 +94,7 @@ def collect_data():
     original_count = len(image_paths)
     logger.info(f'原始训练样本: {original_count} 张, {len(label_names)} 个类别')
 
-    # 如果每个类别样本少于 5 张，用轻量离线增强扩充
+    # 如果每个类别样本少于 20 张，用轻量离线增强扩充
     from collections import Counter
     label_counts = Counter(labels)
     augmented_paths = list(image_paths)
@@ -109,12 +102,18 @@ def collect_data():
 
     offline_aug = transforms.Compose([
         transforms.RandomHorizontalFlip(p=1.0),
-        transforms.ColorJitter(brightness=0.3, contrast=0.3),
+        transforms.RandomRotation(15),
+        transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.3),
+        transforms.RandomAffine(degrees=10, translate=(0.1, 0.1), scale=(0.85, 1.15)),
+        transforms.RandomPerspective(distortion_scale=0.2, p=0.5),
     ])
 
+    temp_dir = os.path.join(settings.BASE_DIR, 'recognition', 'ml', 'temp_aug')
+    os.makedirs(temp_dir, exist_ok=True)
+
     for label_id, count in label_counts.items():
-        if count < 5:
-            need = 5 - count
+        if count < 20:
+            need = 20 - count
             class_paths = [p for p, l in zip(image_paths, labels) if l == label_id]
             for i in range(need):
                 src = class_paths[i % len(class_paths)]
@@ -122,7 +121,7 @@ def collect_data():
                 try:
                     img = Image.open(src).convert('RGB')
                     aug_img = offline_aug(img)
-                    aug_path = src + f'.aug{i}.jpg'
+                    aug_path = os.path.join(temp_dir, f'aug_{label_id}_{i}.jpg')
                     aug_img.save(aug_path, 'JPEG', quality=85)
                     augmented_paths.append(aug_path)
                     augmented_labels.append(label_id)
@@ -147,20 +146,21 @@ def train_model(epochs=30, batch_size=8, learning_rate=0.001, patience=5):
 
     train_transform, val_transform = get_transforms()
 
-    # 分别创建训练集和验证集
+    # 分层采样划分训练集和验证集
     full_indices = list(range(len(image_paths)))
-    train_size = int(0.8 * len(full_indices))
-    val_size = len(full_indices) - train_size
-    train_indices, val_indices = torch.utils.data.random_split(full_indices, [train_size, val_size])
-
+    train_idx, val_idx = train_test_split(
+        full_indices, test_size=0.2,
+        stratify=[labels[i] for i in full_indices],
+        random_state=42
+    )
     train_dataset = ProductDataset(
-        [image_paths[i] for i in train_indices],
-        [labels[i] for i in train_indices],
+        [image_paths[i] for i in train_idx],
+        [labels[i] for i in train_idx],
         train_transform,
     )
     val_dataset = ProductDataset(
-        [image_paths[i] for i in val_indices],
-        [labels[i] for i in val_indices],
+        [image_paths[i] for i in val_idx],
+        [labels[i] for i in val_idx],
         val_transform,
     )
 
@@ -171,10 +171,10 @@ def train_model(epochs=30, batch_size=8, learning_rate=0.001, patience=5):
     model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.DEFAULT)
 
     # ========================================================
-    # 关键改动：解冻最后 30% 的特征层，让模型学到商品特有特征
+    # 关键改动：解冻最后 50% 的特征层，让模型学到商品特有特征
     # ========================================================
     total_layers = len(model.features)
-    freeze_until = int(total_layers * 0.7)  # 前 70% 冻结，后 30% 可训练
+    freeze_until = int(total_layers * 0.5)  # 前 50% 冻结，后 50% 可训练
 
     for i, param in enumerate(model.features.parameters()):
         if i < freeze_until:
@@ -193,7 +193,7 @@ def train_model(epochs=30, batch_size=8, learning_rate=0.001, patience=5):
     )
     model = model.to(device)
 
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
 
     # 分层学习率：特征层小学习率，分类器大学习率
     feature_params = [p for p in model.features.parameters() if p.requires_grad]
@@ -304,20 +304,19 @@ def train_model(epochs=30, batch_size=8, learning_rate=0.001, patience=5):
     import recognition.ml.predictor as pred_module
     pred_module._predictor = None
 
-    # 清理离线增强副本
-    for p in image_paths:
-        if '.aug' in p and os.path.exists(p):
-            try:
-                os.remove(p)
-            except OSError:
-                pass
+    # 清理离线增强副本（清理 temp_aug 目录）
+    temp_dir = os.path.join(settings.BASE_DIR, 'recognition', 'ml', 'temp_aug')
+    if os.path.exists(temp_dir):
+        import shutil
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        logger.info('已清理临时增强目录')
 
     return {
         'success': True,
         'message': f'训练完成！最优验证准确率：{best_acc:.1f}%',
         'epochs': len(history['train_loss']),
-        'train_samples': train_size,
-        'val_samples': val_size,
+        'train_samples': len(train_idx),
+        'val_samples': len(val_idx),
         'num_classes': num_classes,
         'best_accuracy': round(best_acc, 1),
         'label_names': {str(k): v for k, v in label_names.items()},
